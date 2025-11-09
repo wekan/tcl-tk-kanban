@@ -654,16 +654,9 @@ proc refreshSwimlanes {boardId} {
     set swimlanes [getSwimlanes $boardId]
     set row 0
 
-    # Board-level actions (above swimlanes)
-    frame .content.canvas.frame.boardactions -bg white
-    grid .content.canvas.frame.boardactions -row $row -column 0 -sticky ew -padx 5 -pady 5
-    button .content.canvas.frame.boardactions.delete -text "Delete Board" \
-        -command [list confirmDelete board $boardId] -bg #ffebee -fg #c62828 \
-        -activebackground #ff5252 -activeforeground white -relief raised \
-        -borderwidth 1 -highlightthickness 0 -font {-weight bold}
-    pack .content.canvas.frame.boardactions.delete -side left
-    addTooltip .content.canvas.frame.boardactions.delete "Delete this board"
-    incr row
+    # (Removed redundant Board-level Delete button to reduce UI duplication; actions available in sidebar)
+    # Advance row only if we would have placed an actions frame; here we skip creating it entirely.
+    # incr row -- not needed since no frame inserted
     
     foreach swimlane $swimlanes {
         lassign $swimlane swimlaneId swimlaneName position
@@ -701,18 +694,19 @@ proc refreshSwimlanes {boardId} {
         pack .content.canvas.frame.sw$swimlaneId.header.addlist -side left -padx 5
         addTooltip .content.canvas.frame.sw$swimlaneId.header.addlist "Add a new list to this swimlane"
         
+        # Order: Clone (left), Delete (rightmost) among right-side buttons
         button .content.canvas.frame.sw$swimlaneId.header.clone -text "⎘" \
             -command [list cloneSwimlane $swimlaneId] -bg #e3f2fd -fg #1976D2 \
             -activebackground #bbdefb -activeforeground #0d47a1 -relief raised \
             -borderwidth 1 -width 2 -font {-weight bold}
         pack .content.canvas.frame.sw$swimlaneId.header.clone -side right -padx 2
         addTooltip .content.canvas.frame.sw$swimlaneId.header.clone "Clone this swimlane"
-        
+
         button .content.canvas.frame.sw$swimlaneId.header.del -text "Delete" \
             -command [list confirmDelete swimlane $swimlaneId] -bg #ffebee -fg #c62828 \
             -activebackground #ff5252 -activeforeground white -relief raised \
             -borderwidth 1 -font {-weight bold}
-        pack .content.canvas.frame.sw$swimlaneId.header.del -side right
+        pack .content.canvas.frame.sw$swimlaneId.header.del -side right -padx 1
         addTooltip .content.canvas.frame.sw$swimlaneId.header.del "Delete this swimlane"
         
         # Lists container
