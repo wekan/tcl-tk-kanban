@@ -8,11 +8,13 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/driver/desktop"
 	"fyne.io/fyne/v2/widget"
 	"github.com/xuri/excelize/v2"
 	_ "github.com/mattn/go-sqlite3"
+	"image/color"
 )
 
 // Structs for data
@@ -54,6 +56,72 @@ var mainArea *container.Scroll
 var mainWindow fyne.Window
 var draggedCard *DraggableCard
 var draggedList *DraggableList
+var draggedSwimlaneID int
+var draggingSwimlane bool
+
+// Reorder helpers move an item to a target index and re-pack positions 0..n-1
+func reorderCards(listID int, cardID int, newIndex int) {
+	cards := getCards(listID)
+	// build ordered slice of IDs excluding moved card
+	ids := make([]int, 0, len(cards))
+	for _, c := range cards {
+		if c.ID != cardID {
+			ids = append(ids, c.ID)
+		}
+	}
+	if newIndex < 0 {
+		newIndex = 0
+	}
+	if newIndex > len(ids) {
+		newIndex = len(ids)
+	}
+	// insert cardID at newIndex
+	ids = append(ids[:newIndex], append([]int{cardID}, ids[newIndex:]...)...)
+	// persist positions
+	for i, id := range ids {
+		db.Exec("UPDATE cards SET position = ? WHERE id = ?", i, id)
+	}
+}
+
+func reorderLists(swimlaneID int, listID int, newIndex int) {
+	lists := getLists(swimlaneID)
+	ids := make([]int, 0, len(lists))
+	for _, l := range lists {
+		if l.ID != listID {
+			ids = append(ids, l.ID)
+		}
+	}
+	if newIndex < 0 {
+		newIndex = 0
+	}
+	if newIndex > len(ids) {
+		newIndex = len(ids)
+	}
+	ids = append(ids[:newIndex], append([]int{listID}, ids[newIndex:]...)...)
+	for i, id := range ids {
+		db.Exec("UPDATE lists SET position = ? WHERE id = ?", i, id)
+	}
+}
+
+func reorderSwimlanes(boardID int, swimlaneID int, newIndex int) {
+	swimlanes := getSwimlanes(boardID)
+	ids := make([]int, 0, len(swimlanes))
+	for _, s := range swimlanes {
+		if s.ID != swimlaneID {
+			ids = append(ids, s.ID)
+		}
+	}
+	if newIndex < 0 {
+		newIndex = 0
+	}
+	if newIndex > len(ids) {
+		newIndex = len(ids)
+	}
+	ids = append(ids[:newIndex], append([]int{swimlaneID}, ids[newIndex:]...)...)
+	for i, id := range ids {
+		db.Exec("UPDATE swimlanes SET position = ? WHERE id = ?", i, id)
+	}
+}
 var boardContainer *fyne.Container
 var currentTooltip *widget.PopUp
 var tooltipTimer *time.Timer
@@ -198,6 +266,9 @@ func (d *DraggableIcon) Dragged(ev *fyne.DragEvent) {
 		draggedCard = d.Card
 	} else if d.List != nil {
 		draggedList = d.List
+	} else if d.SwimlaneID != 0 {
+		draggingSwimlane = true
+		draggedSwimlaneID = d.SwimlaneID
 	}
 	// Swimlane dragging not implemented yet
 }
@@ -205,6 +276,60 @@ func (d *DraggableIcon) Dragged(ev *fyne.DragEvent) {
 func (d *DraggableIcon) DragEnd() {
 	draggedCard = nil
 	draggedList = nil
+	draggingSwimlane = false
+}
+
+// Generic drop slot that can accept cards, lists, or swimlanes and place them at a target index
+type DropSlot struct {
+	*fyne.Container
+	Kind       string // "card"|"list"|"swimlane"
+	ListID     int    // for card reordering context
+	SwimlaneID int    // for list reordering context
+	BoardID    int    // for swimlane reordering context
+	Index      int    // target index where the dragged item should be inserted
+}
+
+func (d *DropSlot) Dragged(ev *fyne.DragEvent) {}
+
+func (d *DropSlot) DragEnd() {}
+
+func (d *DropSlot) Dropped(ev *fyne.DragEvent) {
+	switch d.Kind {
+	case "card":
+		if draggedCard != nil && draggedCard.ListID == d.ListID {
+			reorderCards(d.ListID, draggedCard.CardID, d.Index)
+			var boardID int
+			db.QueryRow(`SELECT s.board_id FROM swimlanes s JOIN lists l ON s.id = l.swimlane_id WHERE l.id = ?`, d.ListID).Scan(&boardID)
+			loadBoard(boardID)
+		}
+	case "list":
+		if draggedList != nil && draggedList.SwimlaneID == d.SwimlaneID {
+			reorderLists(d.SwimlaneID, draggedList.ListID, d.Index)
+			var boardID int
+			db.QueryRow("SELECT board_id FROM swimlanes WHERE id = ?", d.SwimlaneID).Scan(&boardID)
+			loadBoard(boardID)
+		}
+	case "swimlane":
+		if draggingSwimlane && draggedSwimlaneID != 0 && d.BoardID != 0 {
+			reorderSwimlanes(d.BoardID, draggedSwimlaneID, d.Index)
+			loadBoard(d.BoardID)
+		}
+	}
+}
+
+func NewDropSlot(kind string, boardID, swimlaneID, listID, index int) *DropSlot {
+	rect := canvas.NewRectangle(color.NRGBA{0, 120, 255, 80})
+	rect.SetMinSize(fyne.NewSize(16, 16))
+	c := container.NewMax(rect)
+	slot := &DropSlot{
+		Container: c,
+		Kind: kind,
+		BoardID: boardID,
+		SwimlaneID: swimlaneID,
+		ListID: listID,
+		Index: index,
+	}
+	return slot
 }
 
 // Update list positions in a swimlane
@@ -212,6 +337,14 @@ func updateListPositions(swimlaneID int) {
 	lists := getLists(swimlaneID)
 	for i, list := range lists {
 		db.Exec("UPDATE lists SET position = ? WHERE id = ?", i, list.ID)
+	}
+}
+
+// Update card positions in a list
+func updateCardPositions(listID int) {
+	cards := getCards(listID)
+	for i, card := range cards {
+		db.Exec("UPDATE cards SET position = ? WHERE id = ?", i, card.ID)
 	}
 }
 
@@ -1476,12 +1609,14 @@ func loadBoard(boardID int) {
 				func() { deleteSwimlane(s.ID); loadBoard(s.BoardID) },
 			)
 		})
-		swimlaneDragIcon := NewTooltipButton("👋", "Drag to reorder swimlane", func() {})
-		swimlaneDragIcon.Resize(fyne.NewSize(30, 30))
-		swimlaneHeader := container.NewHBox(swimlaneLabel, swimlaneUpBtn, swimlaneDownBtn, addSwimlaneBtn, editSwimlaneBtn, cloneSwimlaneBtn, deleteSwimlaneBtn, swimlaneDragIcon)
+		swimlaneDragHandle := &DraggableIcon{Button: widget.NewButton("👋", func() {}), SwimlaneID: s.ID}
+		swimlaneDragHandle.Resize(fyne.NewSize(30, 30))
+		swimlaneHeader := container.NewHBox(swimlaneLabel, swimlaneUpBtn, swimlaneDownBtn, addSwimlaneBtn, editSwimlaneBtn, cloneSwimlaneBtn, deleteSwimlaneBtn, swimlaneDragHandle)
 
 		lists := getLists(s.ID)
-		listContainers := make([]fyne.CanvasObject, len(lists))
+		listRow := make([]fyne.CanvasObject, 0, len(lists)*2+1)
+		// leading list drop slot (index 0)
+		listRow = append(listRow, NewDropSlot("list", 0, s.ID, 0, 0))
 		for j, l := range lists {
 			// List header with move and management buttons
 			listLabel := widget.NewLabel(l.Name)
@@ -1499,49 +1634,44 @@ func loadBoard(boardID int) {
 					func() { deleteList(l.ID); loadBoard(s.BoardID) },
 				)
 			})
-			listDragIcon := NewTooltipButton("👋", "Drag to reorder list", func() {})
-			listDragIcon.Resize(fyne.NewSize(30, 30))
-			listHeader := container.NewHBox(listLabel, listUpBtn, listDownBtn, listLeftBtn, listRightBtn, addListBtn, editListBtn, cloneListBtn, deleteListBtn, listDragIcon)
 
-			cards := getCards(l.ID)
-			
 			// Create draggable list container
 			draggableList := &DraggableList{
 				ListID:     l.ID,
 				SwimlaneID: s.ID,
 				Container:  container.NewVBox(),
 			}
+			// Drag handle for list
+			listHandle := &DraggableIcon{Button: widget.NewButton("👋", func() {}), List: draggableList}
+			listHandle.Resize(fyne.NewSize(30, 30))
+			listHeader := container.NewHBox(listLabel, listUpBtn, listDownBtn, listLeftBtn, listRightBtn, addListBtn, editListBtn, cloneListBtn, deleteListBtn, listHandle)
 			draggableList.Container.Add(listHeader)
-			
-			// Add cards
-			hasCards := false
-			for _, c := range cards {
-				hasCards = true
-				// Create a draggable card widget with move buttons
+
+			// Cards with drop slots
+			cards := getCards(l.ID)
+			cardObjs := make([]fyne.CanvasObject, 0, len(cards)*2+1)
+			// leading card slot index 0
+			cardObjs = append(cardObjs, NewDropSlot("card", 0, 0, l.ID, 0))
+			for idx, c := range cards {
 				draggableCard := &DraggableCard{
 					CardID: c.ID,
 					ListID: l.ID,
 					Card:   widget.NewCard("", c.Title, widget.NewLabel(c.Description)),
 				}
-				
-				// Add drag icon to card title area
-				cardDragIcon := NewTooltipButton("👋", "Drag to reorder card", func() {})
-				cardDragIcon.Resize(fyne.NewSize(25, 25))
-				
-				// Create custom card header with title and drag icon
+				// drag handle for card
+				cardHandle := &DraggableIcon{Button: widget.NewButton("👋", func() {}), Card: draggableCard}
+				cardHandle.Resize(fyne.NewSize(25, 25))
 				cardTitleContainer := container.NewHBox(
 					widget.NewLabelWithStyle(c.Title, fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
 					layout.NewSpacer(),
-					cardDragIcon,
+					cardHandle,
 				)
-				
 				// Recreate card with custom header
 				draggableCard.Card = widget.NewCard("", "", container.NewVBox(
 					cardTitleContainer,
 					widget.NewLabel(c.Description),
 				))
-				
-				// Add move and management buttons to the card
+				// Buttons row
 				cardUpBtn := NewTooltipButton("▲", "Move card up", func() { moveCardUp(c.ID) })
 				cardDownBtn := NewTooltipButton("▼", "Move card down", func() { moveCardDown(c.ID) })
 				cardLeftBtn := NewTooltipButton("◀", "Move card to list at left", func() { moveCardToLeftList(c.ID) })
@@ -1556,46 +1686,50 @@ func loadBoard(boardID int) {
 						func() { deleteCard(c.ID); loadBoard(s.BoardID) },
 					)
 				})
-				
-				// Create a container for the card with buttons
 				cardContainer := container.NewVBox(
 					container.NewHBox(cardUpBtn, cardDownBtn, cardLeftBtn, cardRightBtn, addCardBtn, editCardBtn, cloneCardBtn, deleteCardBtn),
 					draggableCard.Card,
 				)
-				
-				draggableList.Container.Add(cardContainer)
+				cardObjs = append(cardObjs, cardContainer)
+				cardObjs = append(cardObjs, NewDropSlot("card", 0, 0, l.ID, idx+1))
 			}
-
-			// If no cards were added to this list, show "Add Card" button
-			if !hasCards {
+			if len(cards) == 0 {
 				addCardButton := widget.NewButton("Add Card", func() { showNewCardDialog(l.ID) })
 				addCardButton.Importance = widget.HighImportance
 				draggableList.Container.Add(container.NewVBox(
 					widget.NewLabel("This list has no cards yet."),
 					addCardButton,
 				))
+			} else {
+				draggableList.Container.Add(container.NewVBox(cardObjs...))
 			}
 
-			listContainers[j] = draggableList.Container
+			listRow = append(listRow, draggableList.Container)
+			listRow = append(listRow, NewDropSlot("list", 0, s.ID, 0, j+1))
 		}
 
-		// If no lists exist in this swimlane, show "Add List" button
+		// If no lists exist in this swimlane, show "Add List" message/button
 		if len(lists) == 0 {
 			addListButton := widget.NewButton("Add List", func() { showNewListDialog(s.ID) })
 			addListButton.Importance = widget.HighImportance
-			listContainers = []fyne.CanvasObject{container.NewVBox(
+			listRow = append(listRow, container.NewVBox(
 				widget.NewLabel("This swimlane has no lists yet."),
 				addListButton,
-			)}
+			))
 		}
 
-		// Create droppable swimlane container
+		// Create droppable swimlane container with swimlane-level drop slots at edges
 		droppableSwimlane := &DroppableSwimlane{
 			SwimlaneID: s.ID,
 			Container:  container.NewVBox(),
 		}
 		droppableSwimlane.Container.Add(swimlaneHeader)
-		droppableSwimlane.Container.Add(container.NewHBox(listContainers...))
+		// add swimlane drop slots before and after the lists row for reordering
+		topSwimlaneSlot := NewDropSlot("swimlane", s.BoardID, 0, 0, i) // index i before current
+		bottomSwimlaneSlot := NewDropSlot("swimlane", s.BoardID, 0, 0, i+1)
+		droppableSwimlane.Container.Add(topSwimlaneSlot)
+		droppableSwimlane.Container.Add(container.NewHBox(listRow...))
+		droppableSwimlane.Container.Add(bottomSwimlaneSlot)
 		
 		swimlaneContainers[i] = droppableSwimlane.Container
 	}
