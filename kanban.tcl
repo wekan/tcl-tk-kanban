@@ -155,6 +155,7 @@ proc deleteCard {cardId} {
 # type: one of swimlane|list|card
 proc confirmDelete {type id} {
     switch -- $type {
+        board { set label "board" }
         swimlane { set label "swimlane" }
         list { set label "list" }
         card { set label "card" }
@@ -165,6 +166,7 @@ proc confirmDelete {type id} {
         -message "Are you sure you want to delete this $label? This cannot be undone." ]
     if {$answer eq "yes"} {
         switch -- $type {
+            board { deleteBoard $id }
             swimlane { deleteSwimlane $id }
             list { deleteList $id }
             card { deleteCard $id }
@@ -365,7 +367,7 @@ proc refreshBoards {} {
             -bg white -activebackground #e0e0e0 -relief flat -anchor w
         pack .sidebar.boardsframe.b$id.btn -side left -fill x -expand 1
         
-        button .sidebar.boardsframe.b$id.del -text "×" -command [list deleteBoard $id] \
+        button .sidebar.boardsframe.b$id.del -text "×" -command [list confirmDelete board $id] \
             -bg white -fg red -activebackground #ffcccc -relief flat -width 2
         pack .sidebar.boardsframe.b$id.del -side right
     }
@@ -391,6 +393,16 @@ proc refreshSwimlanes {boardId} {
     
     set swimlanes [getSwimlanes $boardId]
     set row 0
+
+    # Board-level actions (above swimlanes)
+    frame .content.canvas.frame.boardactions -bg white
+    grid .content.canvas.frame.boardactions -row $row -column 0 -sticky ew -padx 5 -pady 5
+    button .content.canvas.frame.boardactions.delete -text "Delete Board" \
+        -command [list confirmDelete board $boardId] -bg #ffebee -fg #c62828 \
+        -activebackground #ff5252 -activeforeground white -relief raised \
+        -borderwidth 1 -highlightthickness 0 -font {-weight bold}
+    pack .content.canvas.frame.boardactions.delete -side left
+    incr row
     
     foreach swimlane $swimlanes {
         lassign $swimlane swimlaneId swimlaneName position
