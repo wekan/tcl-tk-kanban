@@ -1016,6 +1016,189 @@ func showNewCardDialog(listID int) {
 	dialog.Show()
 }
 
+// Update functions
+func updateBoard(boardID int, name, description string) {
+	_, err := db.Exec("UPDATE boards SET name = ?, description = ? WHERE id = ?", name, description, boardID)
+	if err != nil {
+		fmt.Println("Error updating board:", err)
+	}
+}
+
+func updateSwimlane(swimlaneID int, name string) {
+	_, err := db.Exec("UPDATE swimlanes SET name = ? WHERE id = ?", name, swimlaneID)
+	if err != nil {
+		fmt.Println("Error updating swimlane:", err)
+	}
+}
+
+func updateList(listID int, name string) {
+	_, err := db.Exec("UPDATE lists SET name = ? WHERE id = ?", name, listID)
+	if err != nil {
+		fmt.Println("Error updating list:", err)
+	}
+}
+
+func updateCard(cardID int, title, description string) {
+	_, err := db.Exec("UPDATE cards SET title = ?, description = ? WHERE id = ?", title, description, cardID)
+	if err != nil {
+		fmt.Println("Error updating card:", err)
+	}
+}
+
+func showEditBoardDialog(boardID int) {
+	var currentName, currentDesc string
+	err := db.QueryRow("SELECT name, description FROM boards WHERE id = ?", boardID).Scan(&currentName, &currentDesc)
+	if err != nil {
+		fmt.Println("Error getting board info:", err)
+		return
+	}
+	
+	nameEntry := widget.NewEntry()
+	nameEntry.SetText(currentName)
+	
+	descEntry := widget.NewMultiLineEntry()
+	descEntry.SetText(currentDesc)
+	
+	cancelBtn := widget.NewButton("Cancel", func() {})
+	saveBtn := widget.NewButton("Save", func() {})
+	
+	content := container.NewVBox(
+		widget.NewLabel("Edit Board"),
+		widget.NewLabel("Board Name:"),
+		nameEntry,
+		widget.NewLabel("Description:"),
+		descEntry,
+		container.NewHBox(cancelBtn, saveBtn),
+	)
+	
+	dialog := widget.NewModalPopUp(content, mainWindow.Canvas())
+	cancelBtn.OnTapped = dialog.Hide
+	saveBtn.OnTapped = func() {
+		if nameEntry.Text != "" {
+			updateBoard(boardID, nameEntry.Text, descEntry.Text)
+			loadBoard(boardID)
+		}
+		dialog.Hide()
+	}
+	
+	dialog.Show()
+}
+
+func showEditSwimlaneDialog(swimlaneID int) {
+	var currentName string
+	var boardID int
+	err := db.QueryRow("SELECT name, board_id FROM swimlanes WHERE id = ?", swimlaneID).Scan(&currentName, &boardID)
+	if err != nil {
+		fmt.Println("Error getting swimlane info:", err)
+		return
+	}
+	
+	nameEntry := widget.NewEntry()
+	nameEntry.SetText(currentName)
+	
+	cancelBtn := widget.NewButton("Cancel", func() {})
+	saveBtn := widget.NewButton("Save", func() {})
+	
+	content := container.NewVBox(
+		widget.NewLabel("Edit Swimlane"),
+		widget.NewLabel("Swimlane Name:"),
+		nameEntry,
+		container.NewHBox(cancelBtn, saveBtn),
+	)
+	
+	dialog := widget.NewModalPopUp(content, mainWindow.Canvas())
+	cancelBtn.OnTapped = dialog.Hide
+	saveBtn.OnTapped = func() {
+		if nameEntry.Text != "" {
+			updateSwimlane(swimlaneID, nameEntry.Text)
+			loadBoard(boardID)
+		}
+		dialog.Hide()
+	}
+	
+	dialog.Show()
+}
+
+func showEditListDialog(listID int) {
+	var currentName string
+	var boardID int
+	err := db.QueryRow(`SELECT l.name, s.board_id FROM lists l 
+		JOIN swimlanes s ON l.swimlane_id = s.id 
+		WHERE l.id = ?`, listID).Scan(&currentName, &boardID)
+	if err != nil {
+		fmt.Println("Error getting list info:", err)
+		return
+	}
+	
+	nameEntry := widget.NewEntry()
+	nameEntry.SetText(currentName)
+	
+	cancelBtn := widget.NewButton("Cancel", func() {})
+	saveBtn := widget.NewButton("Save", func() {})
+	
+	content := container.NewVBox(
+		widget.NewLabel("Edit List"),
+		widget.NewLabel("List Name:"),
+		nameEntry,
+		container.NewHBox(cancelBtn, saveBtn),
+	)
+	
+	dialog := widget.NewModalPopUp(content, mainWindow.Canvas())
+	cancelBtn.OnTapped = dialog.Hide
+	saveBtn.OnTapped = func() {
+		if nameEntry.Text != "" {
+			updateList(listID, nameEntry.Text)
+			loadBoard(boardID)
+		}
+		dialog.Hide()
+	}
+	
+	dialog.Show()
+}
+
+func showEditCardDialog(cardID int) {
+	var currentTitle, currentDesc string
+	var boardID int
+	err := db.QueryRow(`SELECT c.title, c.description, s.board_id FROM cards c
+		JOIN lists l ON c.list_id = l.id
+		JOIN swimlanes s ON l.swimlane_id = s.id
+		WHERE c.id = ?`, cardID).Scan(&currentTitle, &currentDesc, &boardID)
+	if err != nil {
+		fmt.Println("Error getting card info:", err)
+		return
+	}
+	
+	titleEntry := widget.NewEntry()
+	titleEntry.SetText(currentTitle)
+	
+	descEntry := widget.NewMultiLineEntry()
+	descEntry.SetText(currentDesc)
+	
+	cancelBtn := widget.NewButton("Cancel", func() {})
+	saveBtn := widget.NewButton("Save", func() {})
+	
+	content := container.NewVBox(
+		widget.NewLabel("Edit Card"),
+		widget.NewLabel("Card Title:"),
+		titleEntry,
+		widget.NewLabel("Description:"),
+		descEntry,
+		container.NewHBox(cancelBtn, saveBtn),
+	)
+	
+	dialog := widget.NewModalPopUp(content, mainWindow.Canvas())
+	cancelBtn.OnTapped = dialog.Hide
+	saveBtn.OnTapped = func() {
+		if titleEntry.Text != "" {
+			updateCard(cardID, titleEntry.Text, descEntry.Text)
+			loadBoard(boardID)
+		}
+		dialog.Hide()
+	}
+	
+	dialog.Show()
+}
+
 // XLSX Export function (from xlsx_exporter.go)
 func exportBoardToXLSX(boardID int, outputFile string) error {
 	f := excelize.NewFile()
@@ -1138,6 +1321,12 @@ func createMainWindow(a fyne.App) fyne.Window {
 		}
 	})
 
+	editBoardBtn := NewTooltipButton("Edit Board", "Edit current board name and description", func() {
+		if currentBoardID > 0 {
+			showEditBoardDialog(currentBoardID)
+		}
+	})
+
 	exportBtn := NewTooltipButton("Export Board", "Export board to Excel (A4 multipage)", func() {
 		if currentBoardID > 0 {
 			outputFile := fmt.Sprintf("board_%d_export.xlsx", currentBoardID)
@@ -1154,6 +1343,7 @@ func createMainWindow(a fyne.App) fyne.Window {
 		widget.NewLabel("Boards"),
 		boardList,
 		addBoardBtn,
+		editBoardBtn,
 		cloneBoardBtn,
 		deleteBoardBtn,
 		exportBtn,
@@ -1185,9 +1375,10 @@ func loadBoard(boardID int) {
 		swimlaneUpBtn := NewTooltipButton("▲", "Move swimlane up", func() { moveSwimlaneUp(s.ID) })
 		swimlaneDownBtn := NewTooltipButton("▼", "Move swimlane down", func() { moveSwimlaneDown(s.ID) })
 		addSwimlaneBtn := NewTooltipButton("+", "Add swimlane", func() { showNewSwimlaneDialog(s.BoardID) })
+		editSwimlaneBtn := NewTooltipButton("E", "Edit swimlane name", func() { showEditSwimlaneDialog(s.ID) })
 		cloneSwimlaneBtn := NewTooltipButton("C", "Clone swimlane", func() { cloneSwimlane(s.ID); loadBoard(s.BoardID) })
 		deleteSwimlaneBtn := NewTooltipButton("X", "Delete swimlane", func() { deleteSwimlane(s.ID); loadBoard(s.BoardID) })
-		swimlaneHeader := container.NewHBox(swimlaneLabel, swimlaneUpBtn, swimlaneDownBtn, addSwimlaneBtn, cloneSwimlaneBtn, deleteSwimlaneBtn)
+		swimlaneHeader := container.NewHBox(swimlaneLabel, swimlaneUpBtn, swimlaneDownBtn, addSwimlaneBtn, editSwimlaneBtn, cloneSwimlaneBtn, deleteSwimlaneBtn)
 
 		lists := getLists(s.ID)
 		listContainers := make([]fyne.CanvasObject, len(lists))
@@ -1199,9 +1390,10 @@ func loadBoard(boardID int) {
 			listLeftBtn := NewTooltipButton("◀", "Move list to the left", func() { moveListLeft(l.ID) })
 			listRightBtn := NewTooltipButton("▶", "Move list to the right", func() { moveListRight(l.ID) })
 			addListBtn := NewTooltipButton("+", "Add list", func() { showNewListDialog(l.SwimlaneID) })
+			editListBtn := NewTooltipButton("E", "Edit list name", func() { showEditListDialog(l.ID) })
 			cloneListBtn := NewTooltipButton("C", "Clone list", func() { cloneList(l.ID); loadBoard(s.BoardID) })
 			deleteListBtn := NewTooltipButton("X", "Delete list", func() { deleteList(l.ID); loadBoard(s.BoardID) })
-			listHeader := container.NewHBox(listLabel, listUpBtn, listDownBtn, listLeftBtn, listRightBtn, addListBtn, cloneListBtn, deleteListBtn)
+			listHeader := container.NewHBox(listLabel, listUpBtn, listDownBtn, listLeftBtn, listRightBtn, addListBtn, editListBtn, cloneListBtn, deleteListBtn)
 
 			cards := getCards(l.ID)
 			
@@ -1228,12 +1420,13 @@ func loadBoard(boardID int) {
 				cardLeftBtn := NewTooltipButton("◀", "Move card to list at left", func() { moveCardToLeftList(c.ID) })
 				cardRightBtn := NewTooltipButton("▶", "Move card to list at right", func() { moveCardToRightList(c.ID) })
 				addCardBtn := NewTooltipButton("+", "Add card", func() { showNewCardDialog(c.ListID) })
+				editCardBtn := NewTooltipButton("E", "Edit card title and description", func() { showEditCardDialog(c.ID) })
 				cloneCardBtn := NewTooltipButton("C", "Clone card", func() { cloneCard(c.ID); loadBoard(s.BoardID) })
 				deleteCardBtn := NewTooltipButton("X", "Delete card", func() { deleteCard(c.ID); loadBoard(s.BoardID) })
 				
 				// Create a container for the card with buttons
 				cardContainer := container.NewVBox(
-					container.NewHBox(cardUpBtn, cardDownBtn, cardLeftBtn, cardRightBtn, addCardBtn, cloneCardBtn, deleteCardBtn),
+					container.NewHBox(cardUpBtn, cardDownBtn, cardLeftBtn, cardRightBtn, addCardBtn, editCardBtn, cloneCardBtn, deleteCardBtn),
 					draggableCard.Card,
 				)
 				
