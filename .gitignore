@@ -1,0 +1,32 @@
+# Database
+wekan.db
+*.db-journal
+
+# Build artifacts
+kanban.kit
+kanban.vfs/
+
+# Tcl/Tk
+*.tbc
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Thumbnails
+._*
+
+# Linux
+*~
+
+# Backup files
+*.bak
+*.swp
+*.swo
+*~
+
+# IDE
+.vscode/
+.idea/
+*.iml
