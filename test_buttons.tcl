@@ -17,7 +17,7 @@ button .test1.addlist -text "+ List" \
     -bg #1976D2 -fg white \
     -activebackground #1565C0 -activeforeground white \
     -relief raised -borderwidth 1 -highlightthickness 0
-pack .test1.addlist -side right -padx 5 -pady 5
+pack .test1.addlist -side left -padx 5 -pady 5
 
 label .test1.label -text "Swimlane Header (Blue bg):" -bg #2196F3 -fg white -anchor w
 pack .test1.label -side left -padx 10 -pady 5 -fill x -expand 1

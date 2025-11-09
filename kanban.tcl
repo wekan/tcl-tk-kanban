@@ -150,6 +150,28 @@ proc deleteCard {cardId} {
     refreshSwimlanes $boardId
 }
 
+# Generic confirmation dialog before deletions.
+# Usage: confirmDelete type id
+# type: one of swimlane|list|card
+proc confirmDelete {type id} {
+    switch -- $type {
+        swimlane { set label "swimlane" }
+        list { set label "list" }
+        card { set label "card" }
+        default { set label "item" }
+    }
+    set answer [tk_messageBox -icon warning -type yesno -default no \
+        -title "Confirm Delete" \
+        -message "Are you sure you want to delete this $label? This cannot be undone." ]
+    if {$answer eq "yes"} {
+        switch -- $type {
+            swimlane { deleteSwimlane $id }
+            list { deleteList $id }
+            card { deleteCard $id }
+        }
+    }
+}
+
 proc updateCard {cardId title description} {
     db eval {UPDATE cards SET title = $title, description = $description WHERE id = $cardId}
     set boardId [db eval {
@@ -404,12 +426,13 @@ proc refreshSwimlanes {boardId} {
             -command [list showNewListDialog $swimlaneId] -bg #e8f5e9 -fg #2e7d32 \
             -activebackground #c8e6c9 -activeforeground #1b5e20 -relief raised \
             -borderwidth 1 -highlightthickness 0 -font {-weight bold}
-        pack .content.canvas.frame.sw$swimlaneId.header.addlist -side right -padx 5
+        # Place "+ List" to the right of the swimlane move buttons (among left-packed controls)
+        pack .content.canvas.frame.sw$swimlaneId.header.addlist -side left -padx 5
         
-        button .content.canvas.frame.sw$swimlaneId.header.del -text "×" \
-            -command [list deleteSwimlane $swimlaneId] -bg #ffebee -fg #c62828 \
+        button .content.canvas.frame.sw$swimlaneId.header.del -text "Delete" \
+            -command [list confirmDelete swimlane $swimlaneId] -bg #ffebee -fg #c62828 \
             -activebackground #ff5252 -activeforeground white -relief raised \
-            -borderwidth 1 -width 2 -font {-weight bold}
+            -borderwidth 1 -font {-weight bold}
         pack .content.canvas.frame.sw$swimlaneId.header.del -side right
         
         # Lists container
@@ -438,25 +461,25 @@ proc refreshSwimlanes {boardId} {
             pack .content.canvas.frame.sw$swimlaneId.lists.l$listId.header.title \
                 -side left -padx 5 -pady 3
 
-            # Drag handle and move buttons for list
-            button .content.canvas.frame.sw$swimlaneId.lists.l$listId.header.moveleft -text "◀" \
-                -command [list moveListLeft $listId] -bg #f5f5f5 -fg #424242 \
-                -relief raised -borderwidth 1 -width 2 -font {-size 8}
-            pack .content.canvas.frame.sw$swimlaneId.lists.l$listId.header.moveleft -side right -padx 1
+            # Drag handle and move buttons for list. To keep Delete at far right, pack it first with -side right.
+            button .content.canvas.frame.sw$swimlaneId.lists.l$listId.header.del -text "Delete" \
+                -command [list confirmDelete list $listId] -bg #e0e0e0 -fg red \
+                -activebackground #ffcccc -relief flat -width 2
+            pack .content.canvas.frame.sw$swimlaneId.lists.l$listId.header.del -side right -padx 1
+
+            label .content.canvas.frame.sw$swimlaneId.lists.l$listId.header.dragicon -text "⇔" \
+                -bg #e0e0e0 -fg #757575 -font {-size 10 -weight bold}
+            pack .content.canvas.frame.sw$swimlaneId.lists.l$listId.header.dragicon -side right -padx 2
 
             button .content.canvas.frame.sw$swimlaneId.lists.l$listId.header.moveright -text "▶" \
                 -command [list moveListRight $listId] -bg #f5f5f5 -fg #424242 \
                 -relief raised -borderwidth 1 -width 2 -font {-size 8}
             pack .content.canvas.frame.sw$swimlaneId.lists.l$listId.header.moveright -side right -padx 1
 
-            label .content.canvas.frame.sw$swimlaneId.lists.l$listId.header.dragicon -text "⇔" \
-                -bg #e0e0e0 -fg #757575 -font {-size 10 -weight bold}
-            pack .content.canvas.frame.sw$swimlaneId.lists.l$listId.header.dragicon -side right -padx 2
-            
-            button .content.canvas.frame.sw$swimlaneId.lists.l$listId.header.del -text "×" \
-                -command [list deleteList $listId] -bg #e0e0e0 -fg red \
-                -activebackground #ffcccc -relief flat -width 2
-            pack .content.canvas.frame.sw$swimlaneId.lists.l$listId.header.del -side right
+            button .content.canvas.frame.sw$swimlaneId.lists.l$listId.header.moveleft -text "◀" \
+                -command [list moveListLeft $listId] -bg #f5f5f5 -fg #424242 \
+                -relief raised -borderwidth 1 -width 2 -font {-size 8}
+            pack .content.canvas.frame.sw$swimlaneId.lists.l$listId.header.moveleft -side right -padx 1
             
             # Cards container with scrollbar
             frame .content.canvas.frame.sw$swimlaneId.lists.l$listId.cardscontainer
@@ -540,7 +563,7 @@ proc refreshSwimlanes {boardId} {
                     -side left -padx 2
                 
                 button .content.canvas.frame.sw$swimlaneId.lists.l$listId.cardscontainer.canvas.frame.c$cardId.buttons.del \
-                    -text "Delete" -command [list deleteCard $cardId] -fg red \
+                    -text "Delete" -command [list confirmDelete card $cardId] -fg red \
                     -bg #fafafa -relief flat -font {-size 8}
                 pack .content.canvas.frame.sw$swimlaneId.lists.l$listId.cardscontainer.canvas.frame.c$cardId.buttons.del \
                     -side left -padx 2
