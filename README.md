@@ -42,6 +42,12 @@ brew install tcl-tk
 sudo apt-get install tcl tk libsqlite3-tcl
 ```
 
+### OpenBSD
+```bash
+su
+pkg_add tcl tk sqlite3-tcl
+```
+
 ### Other Systems
 Download from [https://www.tcl.tk/](https://www.tcl.tk/)
 
