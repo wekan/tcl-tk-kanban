@@ -661,14 +661,15 @@ proc refreshSwimlanes {boardId} {
     }
     
     set swimlanes [getSwimlanes $boardId]
+    # Sort swimlanes by position (redundant if getSwimlanes already does ORDER BY, but ensures correct order)
+    set swimlanesSorted [lsort -integer -index 2 $swimlanes]
     set row 0
-    
-    foreach swimlane $swimlanes {
+    foreach swimlane $swimlanesSorted {
         lassign $swimlane swimlaneId swimlaneName position
-        
+
         # Swimlane frame
         frame .content.canvas.frame.sw$swimlaneId -bg #f5f5f5 -relief raised -borderwidth 2
-        grid .content.canvas.frame.sw$swimlaneId -row $row -column 0 -sticky ew -padx 5 -pady 5
+        pack .content.canvas.frame.sw$swimlaneId -fill x -padx 5 -pady 5
 
         # Swimlane header
         frame .content.canvas.frame.sw$swimlaneId.header -bg #2196F3
@@ -727,17 +728,16 @@ proc refreshSwimlanes {boardId} {
         pack .content.canvas.frame.sw$swimlaneId.lists -fill both -expand 1 -padx 5 -pady 5
         
         set lists [getLists $swimlaneId]
+        # Sort lists by position (redundant if getLists already does ORDER BY, but ensures correct order)
+        set listsSorted [lsort -integer -index 2 $lists]
         set col 0
-        
-        foreach list $lists {
+        foreach list $listsSorted {
             lassign $list listId listName listPosition
             
             # List frame
             frame .content.canvas.frame.sw$swimlaneId.lists.l$listId -bg white \
                 -relief raised -borderwidth 1 -width 250
-            grid .content.canvas.frame.sw$swimlaneId.lists.l$listId -row 0 -column $col \
-                -sticky ns -padx 5 -pady 5
-            grid columnconfigure .content.canvas.frame.sw$swimlaneId.lists $col -weight 0
+            pack .content.canvas.frame.sw$swimlaneId.lists.l$listId -side left -fill y -padx 5 -pady 5
             
             # List header
             frame .content.canvas.frame.sw$swimlaneId.lists.l$listId.header -bg #e0e0e0
@@ -926,10 +926,8 @@ proc refreshSwimlanes {boardId} {
         -command [list showNewSwimlaneDialog $boardId] \
         -bg #e8f5e9 -fg #2e7d32 -activebackground #c8e6c9 -activeforeground #1b5e20 \
         -relief raised -borderwidth 1 -highlightthickness 0 -font {-weight bold}
-    grid .content.canvas.frame.addswimlane -row $row -column 0 -sticky ew -padx 5 -pady 10
+    pack .content.canvas.frame.addswimlane -fill x -padx 5 -pady 10
     addTooltip .content.canvas.frame.addswimlane "Add a new swimlane to this board"
-    
-    grid columnconfigure .content.canvas.frame 0 -weight 1
 }
 
 proc updateScrollRegion {swimlaneId listId} {
