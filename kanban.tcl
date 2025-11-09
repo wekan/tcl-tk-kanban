@@ -105,6 +105,48 @@ proc deleteBoard {boardId} {
     refreshBoards
 }
 
+proc cloneBoard {boardId} {
+    # Get original board info
+    db eval {SELECT name, description FROM boards WHERE id = $boardId} {
+        set newName "${name} (Copy)"
+        set newDescription $description
+    }
+    
+    # Create new board
+    db eval {INSERT INTO boards (name, description) VALUES ($newName, $newDescription)}
+    set newBoardId [db last_insert_rowid]
+    
+    # Clone all swimlanes
+    db eval {SELECT id, name, position FROM swimlanes WHERE board_id = $boardId ORDER BY position} {
+        set swimlaneId $id
+        set swimlaneName $name
+        set swimlanePos $position
+        
+        db eval {INSERT INTO swimlanes (board_id, name, position) VALUES ($newBoardId, $swimlaneName, $swimlanePos)}
+        set newSwimlaneId [db last_insert_rowid]
+        
+        # Clone all lists in this swimlane
+        db eval {SELECT id, name, position FROM lists WHERE swimlane_id = $swimlaneId ORDER BY position} {
+            set listId $id
+            set listName $name
+            set listPos $position
+            
+            db eval {INSERT INTO lists (swimlane_id, name, position) VALUES ($newSwimlaneId, $listName, $listPos)}
+            set newListId [db last_insert_rowid]
+            
+            # Clone all cards in this list
+            db eval {SELECT title, description, position FROM cards WHERE list_id = $listId ORDER BY position} {
+                set cardTitle $title
+                set cardDesc $description
+                set cardPos $position
+                db eval {INSERT INTO cards (list_id, title, description, position) VALUES ($newListId, $cardTitle, $cardDesc, $cardPos)}
+            }
+        }
+    }
+    
+    refreshBoards
+}
+
 # Swimlane operations
 proc createSwimlane {boardId name} {
     set maxPos [db eval {SELECT COALESCE(MAX(position), -1) FROM swimlanes WHERE board_id = $boardId}]
@@ -124,6 +166,41 @@ proc getSwimlanes {boardId} {
 proc deleteSwimlane {swimlaneId} {
     set boardId [db eval {SELECT board_id FROM swimlanes WHERE id = $swimlaneId}]
     db eval {DELETE FROM swimlanes WHERE id = $swimlaneId}
+    refreshSwimlanes $boardId
+}
+
+proc cloneSwimlane {swimlaneId} {
+    set boardId [db eval {SELECT board_id FROM swimlanes WHERE id = $swimlaneId}]
+    db eval {SELECT name, position FROM swimlanes WHERE id = $swimlaneId} {
+        set origName $name
+    }
+    
+    # Find max position and add at end
+    set maxPos [db eval {SELECT COALESCE(MAX(position), -1) FROM swimlanes WHERE board_id = $boardId}]
+    set newPos [expr {$maxPos + 1}]
+    set newName "${origName} (Copy)"
+    
+    db eval {INSERT INTO swimlanes (board_id, name, position) VALUES ($boardId, $newName, $newPos)}
+    set newSwimlaneId [db last_insert_rowid]
+    
+    # Clone all lists
+    db eval {SELECT id, name, position FROM lists WHERE swimlane_id = $swimlaneId ORDER BY position} {
+        set listId $id
+        set listName $name
+        set listPos $position
+        
+        db eval {INSERT INTO lists (swimlane_id, name, position) VALUES ($newSwimlaneId, $listName, $listPos)}
+        set newListId [db last_insert_rowid]
+        
+        # Clone all cards in this list
+        db eval {SELECT title, description, position FROM cards WHERE list_id = $listId ORDER BY position} {
+            set cardTitle $title
+            set cardDesc $description
+            set cardPos $position
+            db eval {INSERT INTO cards (list_id, title, description, position) VALUES ($newListId, $cardTitle, $cardDesc, $cardPos)}
+        }
+    }
+    
     refreshSwimlanes $boardId
 }
 
@@ -148,6 +225,33 @@ proc deleteList {listId} {
     set swimlaneId [db eval {SELECT swimlane_id FROM lists WHERE id = $listId}]
     set boardId [db eval {SELECT s.board_id FROM swimlanes s JOIN lists l ON s.id = l.swimlane_id WHERE l.id = $listId}]
     db eval {DELETE FROM lists WHERE id = $listId}
+    refreshSwimlanes $boardId
+}
+
+proc cloneList {listId} {
+    set swimlaneId [db eval {SELECT swimlane_id FROM lists WHERE id = $listId}]
+    set boardId [db eval {SELECT s.board_id FROM swimlanes s JOIN lists l ON s.id = l.swimlane_id WHERE l.id = $listId}]
+    
+    db eval {SELECT name, position FROM lists WHERE id = $listId} {
+        set origName $name
+    }
+    
+    # Find max position and add at end
+    set maxPos [db eval {SELECT COALESCE(MAX(position), -1) FROM lists WHERE swimlane_id = $swimlaneId}]
+    set newPos [expr {$maxPos + 1}]
+    set newName "${origName} (Copy)"
+    
+    db eval {INSERT INTO lists (swimlane_id, name, position) VALUES ($swimlaneId, $newName, $newPos)}
+    set newListId [db last_insert_rowid]
+    
+    # Clone all cards
+    db eval {SELECT title, description, position FROM cards WHERE list_id = $listId ORDER BY position} {
+        set cardTitle $title
+        set cardDesc $description
+        set cardPos $position
+        db eval {INSERT INTO cards (list_id, title, description, position) VALUES ($newListId, $cardTitle, $cardDesc, $cardPos)}
+    }
+    
     refreshSwimlanes $boardId
 }
 
@@ -180,6 +284,29 @@ proc deleteCard {cardId} {
         WHERE c.id = $cardId
     }]
     db eval {DELETE FROM cards WHERE id = $cardId}
+    refreshSwimlanes $boardId
+}
+
+proc cloneCard {cardId} {
+    set listId [db eval {SELECT list_id FROM cards WHERE id = $cardId}]
+    set boardId [db eval {
+        SELECT s.board_id FROM swimlanes s 
+        JOIN lists l ON s.id = l.swimlane_id 
+        JOIN cards c ON l.id = c.list_id 
+        WHERE c.id = $cardId
+    }]
+    
+    db eval {SELECT title, description FROM cards WHERE id = $cardId} {
+        set origTitle $title
+        set origDesc $description
+    }
+    
+    # Find max position and add at end
+    set maxPos [db eval {SELECT COALESCE(MAX(position), -1) FROM cards WHERE list_id = $listId}]
+    set newPos [expr {$maxPos + 1}]
+    set newTitle "${origTitle} (Copy)"
+    
+    db eval {INSERT INTO cards (list_id, title, description, position) VALUES ($listId, $newTitle, $origDesc, $newPos)}
     refreshSwimlanes $boardId
 }
 
@@ -500,6 +627,11 @@ proc refreshBoards {} {
         pack .sidebar.boardsframe.b$id.btn -side left -fill x -expand 1
         addTooltip .sidebar.boardsframe.b$id.btn "Select board: $name"
         
+        button .sidebar.boardsframe.b$id.clone -text "⎘" -command [list cloneBoard $id] \
+            -bg white -fg #1976D2 -activebackground #e3f2fd -relief flat -width 2
+        pack .sidebar.boardsframe.b$id.clone -side right
+        addTooltip .sidebar.boardsframe.b$id.clone "Clone board"
+        
         button .sidebar.boardsframe.b$id.del -text "×" -command [list confirmDelete board $id] \
             -bg white -fg red -activebackground #ffcccc -relief flat -width 2
         pack .sidebar.boardsframe.b$id.del -side right
@@ -569,6 +701,13 @@ proc refreshSwimlanes {boardId} {
         pack .content.canvas.frame.sw$swimlaneId.header.addlist -side left -padx 5
         addTooltip .content.canvas.frame.sw$swimlaneId.header.addlist "Add a new list to this swimlane"
         
+        button .content.canvas.frame.sw$swimlaneId.header.clone -text "⎘" \
+            -command [list cloneSwimlane $swimlaneId] -bg #e3f2fd -fg #1976D2 \
+            -activebackground #bbdefb -activeforeground #0d47a1 -relief raised \
+            -borderwidth 1 -width 2 -font {-weight bold}
+        pack .content.canvas.frame.sw$swimlaneId.header.clone -side right -padx 2
+        addTooltip .content.canvas.frame.sw$swimlaneId.header.clone "Clone this swimlane"
+        
         button .content.canvas.frame.sw$swimlaneId.header.del -text "Delete" \
             -command [list confirmDelete swimlane $swimlaneId] -bg #ffebee -fg #c62828 \
             -activebackground #ff5252 -activeforeground white -relief raised \
@@ -608,6 +747,12 @@ proc refreshSwimlanes {boardId} {
                 -activebackground #ffcccc -relief flat -width 2
             pack .content.canvas.frame.sw$swimlaneId.lists.l$listId.header.del -side right -padx 1
             addTooltip .content.canvas.frame.sw$swimlaneId.lists.l$listId.header.del "Delete this list"
+
+            button .content.canvas.frame.sw$swimlaneId.lists.l$listId.header.clone -text "⎘" \
+                -command [list cloneList $listId] -bg #e0e0e0 -fg #1976D2 \
+                -activebackground #e3f2fd -relief flat -width 2
+            pack .content.canvas.frame.sw$swimlaneId.lists.l$listId.header.clone -side right -padx 1
+            addTooltip .content.canvas.frame.sw$swimlaneId.lists.l$listId.header.clone "Clone this list"
 
             # Move list to below/above swimlane (between Delete and other controls)
             button .content.canvas.frame.sw$swimlaneId.lists.l$listId.header.movebelow -text "▼" \
@@ -726,6 +871,13 @@ proc refreshSwimlanes {boardId} {
                 pack .content.canvas.frame.sw$swimlaneId.lists.l$listId.cardscontainer.canvas.frame.c$cardId.buttons.edit \
                     -side left -padx 2
                 addTooltip .content.canvas.frame.sw$swimlaneId.lists.l$listId.cardscontainer.canvas.frame.c$cardId.buttons.edit "Edit card"
+                
+                button .content.canvas.frame.sw$swimlaneId.lists.l$listId.cardscontainer.canvas.frame.c$cardId.buttons.clone \
+                    -text "⎘" -command [list cloneCard $cardId] -fg #1976D2 \
+                    -bg #fafafa -relief flat -font {-size 8}
+                pack .content.canvas.frame.sw$swimlaneId.lists.l$listId.cardscontainer.canvas.frame.c$cardId.buttons.clone \
+                    -side left -padx 2
+                addTooltip .content.canvas.frame.sw$swimlaneId.lists.l$listId.cardscontainer.canvas.frame.c$cardId.buttons.clone "Clone card"
                 
                 button .content.canvas.frame.sw$swimlaneId.lists.l$listId.cardscontainer.canvas.frame.c$cardId.buttons.del \
                     -text "Delete" -command [list confirmDelete card $cardId] -fg red \
