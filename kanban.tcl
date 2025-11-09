@@ -428,6 +428,13 @@ proc refreshBoards {} {
         destroy $child
     }
     
+    # Add "New Board" button at the top
+    button .sidebar.boardsframe.new -text "+ New Board" -command showNewBoardDialog \
+        -bg #e8f5e9 -fg #2e7d32 -activebackground #c8e6c9 -activeforeground #1b5e20 \
+        -relief raised -borderwidth 1 -highlightthickness 0 -font {-weight bold}
+    pack .sidebar.boardsframe.new -fill x -pady 10
+    addTooltip .sidebar.boardsframe.new "Create a new board"
+    
     # Add boards
     set boards [getBoards]
     foreach board $boards {
@@ -445,13 +452,6 @@ proc refreshBoards {} {
         pack .sidebar.boardsframe.b$id.del -side right
         addTooltip .sidebar.boardsframe.b$id.del "Delete board"
     }
-    
-    # Add "New Board" button
-    button .sidebar.boardsframe.new -text "+ New Board" -command showNewBoardDialog \
-        -bg #e8f5e9 -fg #2e7d32 -activebackground #c8e6c9 -activeforeground #1b5e20 \
-        -relief raised -borderwidth 1 -highlightthickness 0 -font {-weight bold}
-    pack .sidebar.boardsframe.new -fill x -pady 10
-    addTooltip .sidebar.boardsframe.new "Create a new board"
 }
 
 proc selectBoard {boardId boardName} {
