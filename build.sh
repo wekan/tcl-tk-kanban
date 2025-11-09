@@ -28,17 +28,18 @@ show_banner() {
 # Display menu
 show_menu() {
     echo -e "${GREEN}Please select an option:${NC}"
-    echo "1) Run Kanban application (Tcl interpreter)"
-    echo "2) Build TclKit .kit file (Simple build)"
-    echo "3) Run .kit file (if built)"
-    echo "9) Build executable (macOS app bundle)"
-    echo "4) Clean build artifacts"
-    echo "5) Check dependencies"
-    echo "7) Build Go XLSX exporter (binary)"
-    echo "8) Build Go XLSX exporter as .so and embed in .kit"
-    echo "6) Exit"
+    echo "1) Check dependencies"
+    echo "2) Build TclKit"
+    echo "3) Build TclKit .kit file (Simple build)"
+    echo "4) Build Go XLSX exporter (binary)"
+    echo "5) Build Go XLSX exporter as .so and embed in .kit"
+    echo "6) Build executable (macOS app bundle)"
+    echo "7) Run Kanban application (Tcl interpreter)"
+    echo "8) Run .kit file (if built)"
+    echo "9) Clean build artifacts"
+    echo "10) Exit"
     echo ""
-    echo -n "Enter your choice [1-9]: "
+    echo -n "Enter your choice [1-10]: "
 }
 
 # Check if tclsh is available
@@ -339,6 +340,48 @@ EOF
     return 0
 }
 
+# Build TclKit for macOS
+build_tclkit() {
+    echo -e "${BLUE}Building TclKit for macOS...${NC}"
+    
+    mkdir -p build
+    cd build
+    
+    # Download kitgen if not present
+    if [ ! -f kitgen ]; then
+        echo "Downloading kitgen..."
+        curl -O http://kitgen.sourceforge.net/kitgen
+        chmod +x kitgen
+    fi
+    
+    # Download Tcl source
+    if [ ! -f tcl8.6.13-src.tar.gz ]; then
+        echo "Downloading Tcl 8.6.13 source..."
+        curl -O https://prdownloads.sourceforge.net/tcl/tcl8.6.13-src.tar.gz
+    fi
+    
+    # Download Tk source
+    if [ ! -f tk8.6.13-src.tar.gz ]; then
+        echo "Downloading Tk 8.6.13 source..."
+        curl -O https://prdownloads.sourceforge.net/tcl/tk8.6.13-src.tar.gz
+    fi
+    
+    # Build TclKit using kitgen
+    echo "Building TclKit with kitgen..."
+    ./kitgen tcl tcl8.6.13-src.tar.gz tk tk8.6.13-src.tar.gz
+    
+    if [ -f tclkit ]; then
+        cp tclkit ../
+        echo -e "${GREEN}✓ TclKit built and copied to project root${NC}"
+        cd ..
+        return 0
+    else
+        echo -e "${RED}Error: TclKit build failed${NC}"
+        cd ..
+        return 1
+    fi
+}
+
 # --- Main Script ---
 
 show_banner
@@ -348,35 +391,38 @@ while true; do
     read choice
     case $choice in
         1)
-            run_app
-            ;;
-        2)
-            build_kit
-            ;;
-        3)
-            run_kit
-            ;;
-        4)
-            clean_build
-            ;;
-        5)
             check_dependencies
             ;;
+        2)
+            build_tclkit
+            ;;
+        3)
+            build_kit
+            ;;
+        4)
+            build_go_binary
+            ;;
+        5)
+            build_go_so_embed
+            ;;
         6)
+            build_single_executable
+            ;;
+        7)
+            run_app
+            ;;
+        8)
+            run_kit
+            ;;
+        9)
+            clean_build
+            ;;
+        10)
             echo -e "${GREEN}Exiting...${NC}"
             exit 0
             ;;
-        7)
-            build_go_binary
-            ;;
-        8)
-            build_go_so_embed
-            ;;
-        9)
-            build_single_executable
-            ;;
         *)
-            echo -e "${RED}Invalid option. Please choose 1-9.${NC}"
+            echo -e "${RED}Invalid option. Please choose 1-10.${NC}"
             ;;
     esac
     echo ""
