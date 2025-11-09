@@ -589,6 +589,433 @@ func getCards(listID int) []Card {
 	return cards
 }
 
+// Board management functions
+func deleteBoard(boardID int) {
+	_, err := db.Exec("DELETE FROM boards WHERE id = ?", boardID)
+	if err != nil {
+		fmt.Println("Error deleting board:", err)
+	}
+}
+
+func cloneBoard(boardID int) {
+	// Get original board info
+	var origName, origDesc string
+	err := db.QueryRow("SELECT name, description FROM boards WHERE id = ?", boardID).Scan(&origName, &origDesc)
+	if err != nil {
+		fmt.Println("Error getting board info:", err)
+		return
+	}
+
+	// Create new board
+	newName := origName + " (Copy)"
+	_, err = db.Exec("INSERT INTO boards (name, description) VALUES (?, ?)", newName, origDesc)
+	if err != nil {
+		fmt.Println("Error creating board copy:", err)
+		return
+	}
+
+	// Get the new board ID
+	var newBoardID int
+	err = db.QueryRow("SELECT last_insert_rowid()").Scan(&newBoardID)
+	if err != nil {
+		fmt.Println("Error getting new board ID:", err)
+		return
+	}
+
+	// Clone all swimlanes
+	swimlanes := getSwimlanes(boardID)
+	for _, s := range swimlanes {
+		cloneSwimlaneToBoard(s.ID, newBoardID)
+	}
+}
+
+// Swimlane management functions
+func createSwimlane(boardID int, name string) {
+	// Get max position
+	var maxPos int
+	err := db.QueryRow("SELECT COALESCE(MAX(position), -1) FROM swimlanes WHERE board_id = ?", boardID).Scan(&maxPos)
+	if err != nil {
+		fmt.Println("Error getting max position:", err)
+		return
+	}
+	
+	_, err = db.Exec("INSERT INTO swimlanes (board_id, name, position) VALUES (?, ?, ?)", boardID, name, maxPos+1)
+	if err != nil {
+		fmt.Println("Error creating swimlane:", err)
+	}
+}
+
+func deleteSwimlane(swimlaneID int) {
+	_, err := db.Exec("DELETE FROM swimlanes WHERE id = ?", swimlaneID)
+	if err != nil {
+		fmt.Println("Error deleting swimlane:", err)
+	}
+}
+
+func cloneSwimlane(swimlaneID int) {
+	// Get original swimlane info
+	var boardID int
+	var origName string
+	var origPos int
+	err := db.QueryRow("SELECT board_id, name, position FROM swimlanes WHERE id = ?", swimlaneID).Scan(&boardID, &origName, &origPos)
+	if err != nil {
+		fmt.Println("Error getting swimlane info:", err)
+		return
+	}
+
+	// Increment position of all swimlanes below the original
+	_, err = db.Exec("UPDATE swimlanes SET position = position + 1 WHERE board_id = ? AND position > ?", boardID, origPos)
+	if err != nil {
+		fmt.Println("Error updating positions:", err)
+		return
+	}
+
+	// Create new swimlane
+	newName := origName + " (Copy)"
+	newPos := origPos + 1
+	_, err = db.Exec("INSERT INTO swimlanes (board_id, name, position) VALUES (?, ?, ?)", boardID, newName, newPos)
+	if err != nil {
+		fmt.Println("Error creating swimlane copy:", err)
+		return
+	}
+
+	// Get the new swimlane ID
+	var newSwimlaneID int
+	err = db.QueryRow("SELECT last_insert_rowid()").Scan(&newSwimlaneID)
+	if err != nil {
+		fmt.Println("Error getting new swimlane ID:", err)
+		return
+	}
+
+	// Clone all lists
+	lists := getLists(swimlaneID)
+	for _, l := range lists {
+		cloneListToSwimlane(l.ID, newSwimlaneID)
+	}
+}
+
+func cloneSwimlaneToBoard(swimlaneID, newBoardID int) {
+	// Get original swimlane info
+	var origName string
+	var origPos int
+	err := db.QueryRow("SELECT name, position FROM swimlanes WHERE id = ?", swimlaneID).Scan(&origName, &origPos)
+	if err != nil {
+		fmt.Println("Error getting swimlane info:", err)
+		return
+	}
+
+	// Create new swimlane in the new board
+	_, err = db.Exec("INSERT INTO swimlanes (board_id, name, position) VALUES (?, ?, ?)", newBoardID, origName, origPos)
+	if err != nil {
+		fmt.Println("Error creating swimlane in new board:", err)
+		return
+	}
+
+	// Get the new swimlane ID
+	var newSwimlaneID int
+	err = db.QueryRow("SELECT last_insert_rowid()").Scan(&newSwimlaneID)
+	if err != nil {
+		fmt.Println("Error getting new swimlane ID:", err)
+		return
+	}
+
+	// Clone all lists
+	lists := getLists(swimlaneID)
+	for _, l := range lists {
+		cloneListToSwimlane(l.ID, newSwimlaneID)
+	}
+}
+
+// List management functions
+func createList(swimlaneID int, name string) {
+	// Get max position
+	var maxPos int
+	err := db.QueryRow("SELECT COALESCE(MAX(position), -1) FROM lists WHERE swimlane_id = ?", swimlaneID).Scan(&maxPos)
+	if err != nil {
+		fmt.Println("Error getting max position:", err)
+		return
+	}
+	
+	_, err = db.Exec("INSERT INTO lists (swimlane_id, name, position) VALUES (?, ?, ?)", swimlaneID, name, maxPos+1)
+	if err != nil {
+		fmt.Println("Error creating list:", err)
+	}
+}
+
+func deleteList(listID int) {
+	_, err := db.Exec("DELETE FROM lists WHERE id = ?", listID)
+	if err != nil {
+		fmt.Println("Error deleting list:", err)
+	}
+}
+
+func cloneList(listID int) {
+	// Get original list info
+	var swimlaneID int
+	var origName string
+	err := db.QueryRow("SELECT swimlane_id, name FROM lists WHERE id = ?", listID).Scan(&swimlaneID, &origName)
+	if err != nil {
+		fmt.Println("Error getting list info:", err)
+		return
+	}
+
+	// Find max position and add at end
+	var maxPos int
+	err = db.QueryRow("SELECT COALESCE(MAX(position), -1) FROM lists WHERE swimlane_id = ?", swimlaneID).Scan(&maxPos)
+	if err != nil {
+		fmt.Println("Error getting max position:", err)
+		return
+	}
+
+	newName := origName + " (Copy)"
+	newPos := maxPos + 1
+	
+	_, err = db.Exec("INSERT INTO lists (swimlane_id, name, position) VALUES (?, ?, ?)", swimlaneID, newName, newPos)
+	if err != nil {
+		fmt.Println("Error creating list copy:", err)
+		return
+	}
+
+	// Get the new list ID
+	var newListID int
+	err = db.QueryRow("SELECT last_insert_rowid()").Scan(&newListID)
+	if err != nil {
+		fmt.Println("Error getting new list ID:", err)
+		return
+	}
+
+	// Clone all cards
+	cards := getCards(listID)
+	for _, c := range cards {
+		cloneCardToList(c.ID, newListID)
+	}
+}
+
+func cloneListToSwimlane(listID, newSwimlaneID int) {
+	// Get original list info
+	var origName string
+	var origPos int
+	err := db.QueryRow("SELECT name, position FROM lists WHERE id = ?", listID).Scan(&origName, &origPos)
+	if err != nil {
+		fmt.Println("Error getting list info:", err)
+		return
+	}
+
+	// Create new list in the new swimlane
+	_, err = db.Exec("INSERT INTO lists (swimlane_id, name, position) VALUES (?, ?, ?)", newSwimlaneID, origName, origPos)
+	if err != nil {
+		fmt.Println("Error creating list in new swimlane:", err)
+		return
+	}
+
+	// Get the new list ID
+	var newListID int
+	err = db.QueryRow("SELECT last_insert_rowid()").Scan(&newListID)
+	if err != nil {
+		fmt.Println("Error getting new list ID:", err)
+		return
+	}
+
+	// Clone all cards
+	cards := getCards(listID)
+	for _, c := range cards {
+		cloneCardToList(c.ID, newListID)
+	}
+}
+
+// Card management functions
+func createCard(listID int, title, description string) {
+	// Get max position
+	var maxPos int
+	err := db.QueryRow("SELECT COALESCE(MAX(position), -1) FROM cards WHERE list_id = ?", listID).Scan(&maxPos)
+	if err != nil {
+		fmt.Println("Error getting max position:", err)
+		return
+	}
+	
+	_, err = db.Exec("INSERT INTO cards (list_id, title, description, position) VALUES (?, ?, ?, ?)", listID, title, description, maxPos+1)
+	if err != nil {
+		fmt.Println("Error creating card:", err)
+	}
+}
+
+func deleteCard(cardID int) {
+	_, err := db.Exec("DELETE FROM cards WHERE id = ?", cardID)
+	if err != nil {
+		fmt.Println("Error deleting card:", err)
+	}
+}
+
+func cloneCard(cardID int) {
+	// Get original card info
+	var listID int
+	var origTitle, origDesc string
+	err := db.QueryRow("SELECT list_id, title, description FROM cards WHERE id = ?", cardID).Scan(&listID, &origTitle, &origDesc)
+	if err != nil {
+		fmt.Println("Error getting card info:", err)
+		return
+	}
+
+	// Find max position and add at end
+	var maxPos int
+	err = db.QueryRow("SELECT COALESCE(MAX(position), -1) FROM cards WHERE list_id = ?", listID).Scan(&maxPos)
+	if err != nil {
+		fmt.Println("Error getting max position:", err)
+		return
+	}
+
+	newTitle := origTitle + " (Copy)"
+	newPos := maxPos + 1
+	
+	_, err = db.Exec("INSERT INTO cards (list_id, title, description, position) VALUES (?, ?, ?, ?)", listID, newTitle, origDesc, newPos)
+	if err != nil {
+		fmt.Println("Error creating card copy:", err)
+	}
+}
+
+func cloneCardToList(cardID, newListID int) {
+	// Get original card info
+	var origTitle, origDesc string
+	var origPos int
+	err := db.QueryRow("SELECT title, description, position FROM cards WHERE id = ?", cardID).Scan(&origTitle, &origDesc, &origPos)
+	if err != nil {
+		fmt.Println("Error getting card info:", err)
+		return
+	}
+
+	// Create new card in the new list
+	_, err = db.Exec("INSERT INTO cards (list_id, title, description, position) VALUES (?, ?, ?, ?)", newListID, origTitle, origDesc, origPos)
+	if err != nil {
+		fmt.Println("Error creating card in new list:", err)
+	}
+}
+
+// UI Dialog functions
+func showNewBoardDialog() {
+	nameEntry := widget.NewEntry()
+	nameEntry.SetPlaceHolder("Board name")
+	
+	descEntry := widget.NewMultiLineEntry()
+	descEntry.SetPlaceHolder("Board description")
+	
+	cancelBtn := widget.NewButton("Cancel", func() {})
+	createBtn := widget.NewButton("Create", func() {})
+	
+	content := container.NewVBox(
+		widget.NewLabel("Create New Board"),
+		nameEntry,
+		descEntry,
+		container.NewHBox(cancelBtn, createBtn),
+	)
+	
+	dialog := widget.NewModalPopUp(content, mainWindow.Canvas())
+	cancelBtn.OnTapped = dialog.Hide
+	createBtn.OnTapped = func() {
+		if nameEntry.Text != "" {
+			createBoard(nameEntry.Text, descEntry.Text)
+			// Refresh the board list - simplified
+			boards := getBoards()
+			if len(boards) > 0 {
+				currentBoardID = boards[len(boards)-1].ID
+				loadBoard(currentBoardID)
+			}
+		}
+		dialog.Hide()
+	}
+	
+	dialog.Show()
+}
+
+func showNewSwimlaneDialog(boardID int) {
+	nameEntry := widget.NewEntry()
+	nameEntry.SetPlaceHolder("Swimlane name")
+	
+	cancelBtn := widget.NewButton("Cancel", func() {})
+	createBtn := widget.NewButton("Create", func() {})
+	
+	content := container.NewVBox(
+		widget.NewLabel("Create New Swimlane"),
+		nameEntry,
+		container.NewHBox(cancelBtn, createBtn),
+	)
+	
+	dialog := widget.NewModalPopUp(content, mainWindow.Canvas())
+	cancelBtn.OnTapped = dialog.Hide
+	createBtn.OnTapped = func() {
+		if nameEntry.Text != "" {
+			createSwimlane(boardID, nameEntry.Text)
+			loadBoard(boardID)
+		}
+		dialog.Hide()
+	}
+	
+	dialog.Show()
+}
+
+func showNewListDialog(swimlaneID int) {
+	nameEntry := widget.NewEntry()
+	nameEntry.SetPlaceHolder("List name")
+	
+	cancelBtn := widget.NewButton("Cancel", func() {})
+	createBtn := widget.NewButton("Create", func() {})
+	
+	content := container.NewVBox(
+		widget.NewLabel("Create New List"),
+		nameEntry,
+		container.NewHBox(cancelBtn, createBtn),
+	)
+	
+	dialog := widget.NewModalPopUp(content, mainWindow.Canvas())
+	cancelBtn.OnTapped = dialog.Hide
+	createBtn.OnTapped = func() {
+		if nameEntry.Text != "" {
+			createList(swimlaneID, nameEntry.Text)
+			// Find board ID and refresh
+			var boardID int
+			db.QueryRow("SELECT board_id FROM swimlanes WHERE id = ?", swimlaneID).Scan(&boardID)
+			loadBoard(boardID)
+		}
+		dialog.Hide()
+	}
+	
+	dialog.Show()
+}
+
+func showNewCardDialog(listID int) {
+	titleEntry := widget.NewEntry()
+	titleEntry.SetPlaceHolder("Card title")
+	
+	descEntry := widget.NewMultiLineEntry()
+	descEntry.SetPlaceHolder("Card description")
+	
+	cancelBtn := widget.NewButton("Cancel", func() {})
+	createBtn := widget.NewButton("Create", func() {})
+	
+	content := container.NewVBox(
+		widget.NewLabel("Create New Card"),
+		titleEntry,
+		descEntry,
+		container.NewHBox(cancelBtn, createBtn),
+	)
+	
+	dialog := widget.NewModalPopUp(content, mainWindow.Canvas())
+	cancelBtn.OnTapped = dialog.Hide
+	createBtn.OnTapped = func() {
+		if titleEntry.Text != "" {
+			createCard(listID, titleEntry.Text, descEntry.Text)
+			// Find board ID and refresh
+			var boardID int
+			db.QueryRow(`SELECT s.board_id FROM swimlanes s 
+				JOIN lists l ON s.id = l.swimlane_id 
+				WHERE l.id = ?`, listID).Scan(&boardID)
+			loadBoard(boardID)
+		}
+		dialog.Hide()
+	}
+	
+	dialog.Show()
+}
+
 // XLSX Export function (from xlsx_exporter.go)
 func exportBoardToXLSX(boardID int, outputFile string) error {
 	f := excelize.NewFile()
@@ -681,7 +1108,34 @@ func createMainWindow(a fyne.App) fyne.Window {
 	}
 
 	addBoardBtn := NewTooltipButton("Add Board", "Create a new board", func() {
-		fmt.Println("Add board not implemented in this version")
+		showNewBoardDialog()
+	})
+
+	cloneBoardBtn := NewTooltipButton("Clone Board", "Clone current board", func() {
+		if currentBoardID > 0 {
+			cloneBoard(currentBoardID)
+			// Refresh board list - simplified
+			boards := getBoards()
+			if len(boards) > 0 {
+				currentBoardID = boards[len(boards)-1].ID
+				loadBoard(currentBoardID)
+			}
+		}
+	})
+
+	deleteBoardBtn := NewTooltipButton("Delete Board", "Delete current board", func() {
+		if currentBoardID > 0 {
+			deleteBoard(currentBoardID)
+			// Select first available board
+			boards := getBoards()
+			if len(boards) > 0 {
+				currentBoardID = boards[0].ID
+				loadBoard(currentBoardID)
+			} else {
+				currentBoardID = 0
+				loadBoard(0)
+			}
+		}
 	})
 
 	exportBtn := NewTooltipButton("Export Board", "Export board to Excel (A4 multipage)", func() {
@@ -700,6 +1154,8 @@ func createMainWindow(a fyne.App) fyne.Window {
 		widget.NewLabel("Boards"),
 		boardList,
 		addBoardBtn,
+		cloneBoardBtn,
+		deleteBoardBtn,
 		exportBtn,
 	)
 
@@ -724,22 +1180,28 @@ func loadBoard(boardID int) {
 	swimlanes := getSwimlanes(boardID)
 	swimlaneContainers := make([]fyne.CanvasObject, len(swimlanes))
 	for i, s := range swimlanes {
-		// Swimlane header with move buttons
+		// Swimlane header with move and management buttons
 		swimlaneLabel := widget.NewLabel(s.Name)
 		swimlaneUpBtn := NewTooltipButton("▲", "Move swimlane up", func() { moveSwimlaneUp(s.ID) })
 		swimlaneDownBtn := NewTooltipButton("▼", "Move swimlane down", func() { moveSwimlaneDown(s.ID) })
-		swimlaneHeader := container.NewHBox(swimlaneLabel, swimlaneUpBtn, swimlaneDownBtn)
+		addSwimlaneBtn := NewTooltipButton("+", "Add swimlane", func() { showNewSwimlaneDialog(s.BoardID) })
+		cloneSwimlaneBtn := NewTooltipButton("C", "Clone swimlane", func() { cloneSwimlane(s.ID); loadBoard(s.BoardID) })
+		deleteSwimlaneBtn := NewTooltipButton("X", "Delete swimlane", func() { deleteSwimlane(s.ID); loadBoard(s.BoardID) })
+		swimlaneHeader := container.NewHBox(swimlaneLabel, swimlaneUpBtn, swimlaneDownBtn, addSwimlaneBtn, cloneSwimlaneBtn, deleteSwimlaneBtn)
 
 		lists := getLists(s.ID)
 		listContainers := make([]fyne.CanvasObject, len(lists))
 		for j, l := range lists {
-			// List header with move buttons
+			// List header with move and management buttons
 			listLabel := widget.NewLabel(l.Name)
 			listUpBtn := NewTooltipButton("▲", "Move list to above swimlane", func() { moveListToAboveSwimlane(l.ID) })
 			listDownBtn := NewTooltipButton("▼", "Move list to below swimlane", func() { moveListToBelowSwimlane(l.ID) })
 			listLeftBtn := NewTooltipButton("◀", "Move list to the left", func() { moveListLeft(l.ID) })
 			listRightBtn := NewTooltipButton("▶", "Move list to the right", func() { moveListRight(l.ID) })
-			listHeader := container.NewHBox(listLabel, listUpBtn, listDownBtn, listLeftBtn, listRightBtn)
+			addListBtn := NewTooltipButton("+", "Add list", func() { showNewListDialog(l.SwimlaneID) })
+			cloneListBtn := NewTooltipButton("C", "Clone list", func() { cloneList(l.ID); loadBoard(s.BoardID) })
+			deleteListBtn := NewTooltipButton("X", "Delete list", func() { deleteList(l.ID); loadBoard(s.BoardID) })
+			listHeader := container.NewHBox(listLabel, listUpBtn, listDownBtn, listLeftBtn, listRightBtn, addListBtn, cloneListBtn, deleteListBtn)
 
 			cards := getCards(l.ID)
 			
@@ -760,15 +1222,18 @@ func loadBoard(boardID int) {
 					Card:   widget.NewCard("", c.Title, widget.NewLabel(c.Description)),
 				}
 				
-				// Add move buttons to the card
+				// Add move and management buttons to the card
 				cardUpBtn := NewTooltipButton("▲", "Move card up", func() { moveCardUp(c.ID) })
 				cardDownBtn := NewTooltipButton("▼", "Move card down", func() { moveCardDown(c.ID) })
 				cardLeftBtn := NewTooltipButton("◀", "Move card to list at left", func() { moveCardToLeftList(c.ID) })
 				cardRightBtn := NewTooltipButton("▶", "Move card to list at right", func() { moveCardToRightList(c.ID) })
+				addCardBtn := NewTooltipButton("+", "Add card", func() { showNewCardDialog(c.ListID) })
+				cloneCardBtn := NewTooltipButton("C", "Clone card", func() { cloneCard(c.ID); loadBoard(s.BoardID) })
+				deleteCardBtn := NewTooltipButton("X", "Delete card", func() { deleteCard(c.ID); loadBoard(s.BoardID) })
 				
 				// Create a container for the card with buttons
 				cardContainer := container.NewVBox(
-					container.NewHBox(cardUpBtn, cardDownBtn, cardLeftBtn, cardRightBtn),
+					container.NewHBox(cardUpBtn, cardDownBtn, cardLeftBtn, cardRightBtn, addCardBtn, cloneCardBtn, deleteCardBtn),
 					draggableCard.Card,
 				)
 				
