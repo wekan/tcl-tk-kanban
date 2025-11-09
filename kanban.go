@@ -7,6 +7,7 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/driver/desktop"
 	"fyne.io/fyne/v2/widget"
 	"github.com/xuri/excelize/v2"
 	_ "github.com/mattn/go-sqlite3"
@@ -51,6 +52,56 @@ var mainArea *fyne.Container
 var mainWindow fyne.Window
 var draggedCard *DraggableCard
 var draggedList *DraggableList
+var currentTooltip *widget.PopUp
+
+// Tooltip functions
+func showTooltip(obj fyne.CanvasObject, text string) {
+	if currentTooltip != nil {
+		currentTooltip.Hide()
+	}
+	
+	label := widget.NewLabel(text)
+	label.Resize(fyne.NewSize(200, 30))
+	
+	currentTooltip = widget.NewPopUp(label, mainWindow.Canvas())
+	
+	// Position the tooltip near the object
+	pos := obj.Position()
+	size := obj.Size()
+	tooltipPos := fyne.NewPos(pos.X, pos.Y+size.Height+5)
+	currentTooltip.Move(tooltipPos)
+	currentTooltip.Show()
+}
+
+func hideTooltip() {
+	if currentTooltip != nil {
+		currentTooltip.Hide()
+		currentTooltip = nil
+	}
+}
+
+// Custom button with tooltip support
+type TooltipButton struct {
+	widget.Button
+	tooltipText string
+}
+
+func (t *TooltipButton) MouseIn(ev *desktop.MouseEvent) {
+	showTooltip(t, t.tooltipText)
+}
+
+func (t *TooltipButton) MouseOut() {
+	hideTooltip()
+}
+
+func NewTooltipButton(text string, tooltip string, tapped func()) *TooltipButton {
+	btn := &TooltipButton{}
+	btn.ExtendBaseWidget(btn)
+	btn.SetText(text)
+	btn.OnTapped = tapped
+	btn.tooltipText = tooltip
+	return btn
+}
 
 // Draggable card widget
 type DraggableCard struct {
@@ -596,11 +647,11 @@ func createMainWindow(a fyne.App) fyne.Window {
 		loadBoard(currentBoardID)
 	}
 
-	addBoardBtn := widget.NewButton("Add Board", func() {
+	addBoardBtn := NewTooltipButton("Add Board", "Create a new board", func() {
 		fmt.Println("Add board not implemented in this version")
 	})
 
-	exportBtn := widget.NewButton("Export Board", func() {
+	exportBtn := NewTooltipButton("Export Board", "Export board to Excel (A4 multipage)", func() {
 		if currentBoardID > 0 {
 			outputFile := fmt.Sprintf("board_%d_export.xlsx", currentBoardID)
 			err := exportBoardToXLSX(currentBoardID, outputFile)
@@ -642,8 +693,8 @@ func loadBoard(boardID int) {
 	for i, s := range swimlanes {
 		// Swimlane header with move buttons
 		swimlaneLabel := widget.NewLabel(s.Name)
-		swimlaneUpBtn := widget.NewButton("▲", func() { moveSwimlaneUp(s.ID) })
-		swimlaneDownBtn := widget.NewButton("▼", func() { moveSwimlaneDown(s.ID) })
+		swimlaneUpBtn := NewTooltipButton("▲", "Move swimlane up", func() { moveSwimlaneUp(s.ID) })
+		swimlaneDownBtn := NewTooltipButton("▼", "Move swimlane down", func() { moveSwimlaneDown(s.ID) })
 		swimlaneHeader := container.NewHBox(swimlaneLabel, swimlaneUpBtn, swimlaneDownBtn)
 
 		lists := getLists(s.ID)
@@ -651,10 +702,10 @@ func loadBoard(boardID int) {
 		for j, l := range lists {
 			// List header with move buttons
 			listLabel := widget.NewLabel(l.Name)
-			listUpBtn := widget.NewButton("▲", func() { moveListToAboveSwimlane(l.ID) })
-			listDownBtn := widget.NewButton("▼", func() { moveListToBelowSwimlane(l.ID) })
-			listLeftBtn := widget.NewButton("◀", func() { moveListLeft(l.ID) })
-			listRightBtn := widget.NewButton("▶", func() { moveListRight(l.ID) })
+			listUpBtn := NewTooltipButton("▲", "Move list to above swimlane", func() { moveListToAboveSwimlane(l.ID) })
+			listDownBtn := NewTooltipButton("▼", "Move list to below swimlane", func() { moveListToBelowSwimlane(l.ID) })
+			listLeftBtn := NewTooltipButton("◀", "Move list to the left", func() { moveListLeft(l.ID) })
+			listRightBtn := NewTooltipButton("▶", "Move list to the right", func() { moveListRight(l.ID) })
 			listHeader := container.NewHBox(listLabel, listUpBtn, listDownBtn, listLeftBtn, listRightBtn)
 
 			cards := getCards(l.ID)
@@ -677,10 +728,10 @@ func loadBoard(boardID int) {
 				}
 				
 				// Add move buttons to the card
-				cardUpBtn := widget.NewButton("▲", func() { moveCardUp(c.ID) })
-				cardDownBtn := widget.NewButton("▼", func() { moveCardDown(c.ID) })
-				cardLeftBtn := widget.NewButton("◀", func() { moveCardToLeftList(c.ID) })
-				cardRightBtn := widget.NewButton("▶", func() { moveCardToRightList(c.ID) })
+				cardUpBtn := NewTooltipButton("▲", "Move card up", func() { moveCardUp(c.ID) })
+				cardDownBtn := NewTooltipButton("▼", "Move card down", func() { moveCardDown(c.ID) })
+				cardLeftBtn := NewTooltipButton("◀", "Move card to list at left", func() { moveCardToLeftList(c.ID) })
+				cardRightBtn := NewTooltipButton("▶", "Move card to list at right", func() { moveCardToRightList(c.ID) })
 				
 				// Create a container for the card with buttons
 				cardContainer := container.NewVBox(
