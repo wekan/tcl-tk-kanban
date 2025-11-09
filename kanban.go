@@ -59,9 +59,11 @@ var draggedSwimlaneID int
 var draggingSwimlane bool
 
 // Selection tracking
+var selectedBoards = make(map[int]bool)
 var selectedSwimlanes = make(map[int]bool)
 var selectedLists = make(map[int]bool)
 var selectedCards = make(map[int]bool)
+var boardsCheckboxChecked bool
 
 // Reorder helpers move an item to a target index and re-pack positions 0..n-1
 func reorderCards(listID int, cardID int, newIndex int) {
@@ -175,21 +177,25 @@ func moveSelectedRight() {
 }
 
 func editSelected() {
-	for id := range selectedCards {
-		showEditCardDialog(id)
-		return // Edit one at a time
-	}
-	for id := range selectedLists {
-		showEditListDialog(id)
-		return
+	// Edit all selected items (show dialogs for each)
+	for id := range selectedBoards {
+		showEditBoardDialog(id)
 	}
 	for id := range selectedSwimlanes {
 		showEditSwimlaneDialog(id)
-		return
+	}
+	for id := range selectedLists {
+		showEditListDialog(id)
+	}
+	for id := range selectedCards {
+		showEditCardDialog(id)
 	}
 }
 
 func cloneSelected() {
+	for id := range selectedBoards {
+		cloneBoard(id)
+	}
 	for id := range selectedCards {
 		cloneCard(id)
 	}
@@ -200,23 +206,30 @@ func cloneSelected() {
 		cloneSwimlane(id)
 	}
 	loadBoard(currentBoardID)
+	refreshBoardContainer()
 }
 
 func deleteSelected() {
 	// Build confirmation message
 	msg := "Are you sure you want to delete:\n"
-	if len(selectedCards) > 0 {
-		msg += fmt.Sprintf("- %d card(s)\n", len(selectedCards))
-	}
-	if len(selectedLists) > 0 {
-		msg += fmt.Sprintf("- %d list(s)\n", len(selectedLists))
+	if len(selectedBoards) > 0 {
+		msg += fmt.Sprintf("- %d board(s)\n", len(selectedBoards))
 	}
 	if len(selectedSwimlanes) > 0 {
 		msg += fmt.Sprintf("- %d swimlane(s)\n", len(selectedSwimlanes))
 	}
+	if len(selectedLists) > 0 {
+		msg += fmt.Sprintf("- %d list(s)\n", len(selectedLists))
+	}
+	if len(selectedCards) > 0 {
+		msg += fmt.Sprintf("- %d card(s)\n", len(selectedCards))
+	}
 	msg += "\nThis action cannot be undone."
 	
 	showConfirmDialog("Delete Selected Items", msg, func() {
+		for id := range selectedBoards {
+			deleteBoard(id)
+		}
 		for id := range selectedCards {
 			deleteCard(id)
 		}
@@ -227,18 +240,99 @@ func deleteSelected() {
 			deleteSwimlane(id)
 		}
 		// Clear selections
+		selectedBoards = make(map[int]bool)
 		selectedCards = make(map[int]bool)
 		selectedLists = make(map[int]bool)
 		selectedSwimlanes = make(map[int]bool)
-		loadBoard(currentBoardID)
+		
+		// Select first available board or reload current
+		boards := getBoards()
+		if len(boards) > 0 {
+			currentBoardID = boards[0].ID
+			loadBoard(currentBoardID)
+		} else {
+			currentBoardID = 0
+			loadBoard(0)
+		}
+		refreshBoardContainer()
 	})
 }
 
 func clearSelections() {
+	selectedBoards = make(map[int]bool)
 	selectedCards = make(map[int]bool)
 	selectedLists = make(map[int]bool)
 	selectedSwimlanes = make(map[int]bool)
+	boardsCheckboxChecked = false
 	loadBoard(currentBoardID)
+	refreshBoardContainer()
+}
+
+func createNew() {
+	// Priority: Boards checkbox > checked cards > checked lists > checked swimlanes
+	if boardsCheckboxChecked {
+		showNewBoardDialog()
+		return
+	}
+	
+	// Add cards below checked cards
+	if len(selectedCards) > 0 {
+		for cardID := range selectedCards {
+			// Get the list for this card
+			var listID int
+			db.QueryRow("SELECT list_id FROM cards WHERE id = ?", cardID).Scan(&listID)
+			showNewCardDialog(listID)
+			return // Show one dialog at a time
+		}
+	}
+	
+	// Add lists below checked lists
+	if len(selectedLists) > 0 {
+		for listID := range selectedLists {
+			// Get swimlane for this list
+			var swimlaneID int
+			db.QueryRow("SELECT swimlane_id FROM lists WHERE id = ?", listID).Scan(&swimlaneID)
+			showNewListDialog(swimlaneID)
+			return
+		}
+	}
+	
+	// Add swimlanes below checked swimlanes
+	if len(selectedSwimlanes) > 0 {
+		for swimlaneID := range selectedSwimlanes {
+			// Get board for this swimlane
+			var boardID int
+			db.QueryRow("SELECT board_id FROM swimlanes WHERE id = ?", swimlaneID).Scan(&boardID)
+			showNewSwimlaneDialog(boardID)
+			return
+		}
+	}
+}
+
+func exportSelected() {
+	// Export checked boards/swimlanes/lists/cards to Excel
+	if len(selectedBoards) > 0 {
+		// Export first selected board
+		for boardID := range selectedBoards {
+			outputFile := fmt.Sprintf("board_%d_export.xlsx", boardID)
+			err := exportBoardToXLSX(boardID, outputFile)
+			if err != nil {
+				fmt.Println("Export failed:", err)
+			} else {
+				fmt.Println("Exported to", outputFile)
+			}
+			return // Export one at a time
+		}
+	} else if currentBoardID > 0 {
+		// Export current board if nothing selected
+		outputFile := fmt.Sprintf("board_%d_export.xlsx", currentBoardID)
+		err := exportBoardToXLSX(currentBoardID, outputFile)
+		if err != nil {
+			fmt.Println("Export failed:", err)
+		} else {
+			fmt.Println("Exported to", outputFile)
+		}
+	}
 }
 
 var boardContainer *fyne.Container
@@ -1413,13 +1507,27 @@ func refreshBoardContainer() {
 	
 	boards := getBoards()
 	for _, board := range boards {
+		boardCheck := widget.NewCheck("", func(b Board) func(bool) {
+			return func(checked bool) {
+				if checked {
+					selectedBoards[b.ID] = true
+				} else {
+					delete(selectedBoards, b.ID)
+				}
+				loadBoard(currentBoardID)
+			}
+		}(board))
+		boardCheck.Checked = selectedBoards[board.ID]
+		
 		boardBtn := widget.NewButton(fmt.Sprintf("%d: %s", board.ID, board.Name), func(b Board) func() {
 			return func() {
 				currentBoardID = b.ID
 				loadBoard(currentBoardID)
 			}
 		}(board))
-		boardContainer.Add(boardBtn)
+		
+		boardRow := container.NewHBox(boardCheck, boardBtn)
+		boardContainer.Add(boardRow)
 	}
 	
 	if mainWindow != nil {
@@ -1531,72 +1639,16 @@ func createMainWindow(a fyne.App) fyne.Window {
 	boardContainer = container.NewVBox()
 	refreshBoardContainer()
 
-	addBoardBtn := widget.NewButton("Add Board", func() {
-		showNewBoardDialog()
+	// "Boards" label with checkbox
+	boardsCheck := widget.NewCheck("", func(checked bool) {
+		boardsCheckboxChecked = checked
+		loadBoard(currentBoardID)
 	})
-
-	cloneBoardBtn := widget.NewButton("Clone Board", func() {
-		if currentBoardID > 0 {
-			cloneBoard(currentBoardID)
-			// Refresh board list - simplified
-			boards := getBoards()
-			if len(boards) > 0 {
-				currentBoardID = boards[len(boards)-1].ID
-				loadBoard(currentBoardID)
-			}
-		}
-	})
-
-	deleteBoardBtn := widget.NewButton("Delete Board", func() {
-		if currentBoardID > 0 {
-			board := getBoardByID(currentBoardID)
-			if board != nil {
-				showConfirmDialog(
-					"Delete Board",
-					fmt.Sprintf("Are you sure you want to delete board '%s'? This will also delete all swimlanes, lists, and cards in this board. This action cannot be undone.", board.Name),
-					func() {
-						deleteBoard(currentBoardID)
-						// Select first available board
-						boards := getBoards()
-						if len(boards) > 0 {
-							currentBoardID = boards[0].ID
-							loadBoard(currentBoardID)
-						} else {
-							currentBoardID = 0
-							loadBoard(0)
-						}
-					},
-				)
-			}
-		}
-	})
-
-	editBoardBtn := widget.NewButton("Edit Board", func() {
-		if currentBoardID > 0 {
-			showEditBoardDialog(currentBoardID)
-		}
-	})
-
-	exportBtn := widget.NewButton("Export Board", func() {
-		if currentBoardID > 0 {
-			outputFile := fmt.Sprintf("board_%d_export.xlsx", currentBoardID)
-			err := exportBoardToXLSX(currentBoardID, outputFile)
-			if err != nil {
-				fmt.Println("Export failed:", err)
-			} else {
-				fmt.Println("Exported to", outputFile)
-			}
-		}
-	})
+	boardsHeader := container.NewHBox(boardsCheck, widget.NewLabel("Boards"))
 
 	sidebar := container.NewVBox(
-		widget.NewLabel("Boards"),
+		boardsHeader,
 		boardContainer,
-		addBoardBtn,
-		editBoardBtn,
-		cloneBoardBtn,
-		deleteBoardBtn,
-		exportBtn,
 	)
 
 	// Main area
@@ -1636,19 +1688,33 @@ func loadBoard(boardID int) {
 	downBtn := widget.NewButton("▼", moveSelectedDown)
 	leftBtn := widget.NewButton("◀", moveSelectedLeft)
 	rightBtn := widget.NewButton("▶", moveSelectedRight)
+	newBtn := widget.NewButton("New", createNew)
 	editBtn := widget.NewButton("Edit", editSelected)
 	cloneBtn := widget.NewButton("Clone", cloneSelected)
 	deleteBtn := widget.NewButton("Delete", deleteSelected)
 	clearBtn := widget.NewButton("Clear Selection", clearSelections)
+	exportBtn := widget.NewButton("Export", exportSelected)
 	
-	selectionInfo := widget.NewLabel(fmt.Sprintf("Selected: %d swimlanes, %d lists, %d cards", 
-		len(selectedSwimlanes), len(selectedLists), len(selectedCards)))
+	selectionInfo := widget.NewLabel(fmt.Sprintf("Selected: %d boards, %d swimlanes, %d lists, %d cards", 
+		len(selectedBoards), len(selectedSwimlanes), len(selectedLists), len(selectedCards)))
+	
+	// Arrow keys layout (keyboard/joystick style)
+	arrowKeys := container.NewVBox(
+		container.NewHBox(layout.NewSpacer(), upBtn, layout.NewSpacer()),
+		container.NewHBox(leftBtn, downBtn, rightBtn),
+	)
+	
+	// Action buttons and info in right section
+	rightSection := container.NewVBox(
+		container.NewHBox(newBtn, editBtn, cloneBtn, deleteBtn, clearBtn, exportBtn),
+		selectionInfo,
+	)
 	
 	toolbar.Objects = []fyne.CanvasObject{
 		container.NewHBox(
-			upBtn, downBtn, leftBtn, rightBtn, editBtn, cloneBtn, deleteBtn, clearBtn,
+			arrowKeys,
 			layout.NewSpacer(),
-			selectionInfo,
+			rightSection,
 		),
 		widget.NewSeparator(),
 	}
