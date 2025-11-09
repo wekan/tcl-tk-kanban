@@ -627,14 +627,19 @@ proc refreshBoards {} {
         pack .sidebar.boardsframe.b$id.btn -side left -fill x -expand 1
         addTooltip .sidebar.boardsframe.b$id.btn "Select board: $name"
         
+        button .sidebar.boardsframe.b$id.edit -text "Edit" -command [list showEditBoardDialog $id] \
+            -bg white -fg #0d47a1 -activebackground #e3f2fd -relief flat -width 4
+        pack .sidebar.boardsframe.b$id.edit -side left -padx 2
+        addTooltip .sidebar.boardsframe.b$id.edit "Edit board"
+
         button .sidebar.boardsframe.b$id.clone -text "⎘" -command [list cloneBoard $id] \
             -bg white -fg #1976D2 -activebackground #e3f2fd -relief flat -width 2
-        pack .sidebar.boardsframe.b$id.clone -side right
+        pack .sidebar.boardsframe.b$id.clone -side left -padx 2
         addTooltip .sidebar.boardsframe.b$id.clone "Clone board"
-        
+
         button .sidebar.boardsframe.b$id.del -text "×" -command [list confirmDelete board $id] \
             -bg white -fg red -activebackground #ffcccc -relief flat -width 2
-        pack .sidebar.boardsframe.b$id.del -side right
+        pack .sidebar.boardsframe.b$id.del -side left -padx 2
         addTooltip .sidebar.boardsframe.b$id.del "Delete board"
     }
 }
@@ -653,10 +658,6 @@ proc refreshSwimlanes {boardId} {
     
     set swimlanes [getSwimlanes $boardId]
     set row 0
-
-    # (Removed redundant Board-level Delete button to reduce UI duplication; actions available in sidebar)
-    # Advance row only if we would have placed an actions frame; here we skip creating it entirely.
-    # incr row -- not needed since no frame inserted
     
     foreach swimlane $swimlanes {
         lassign $swimlane swimlaneId swimlaneName position
@@ -664,16 +665,24 @@ proc refreshSwimlanes {boardId} {
         # Swimlane frame
         frame .content.canvas.frame.sw$swimlaneId -bg #f5f5f5 -relief raised -borderwidth 2
         grid .content.canvas.frame.sw$swimlaneId -row $row -column 0 -sticky ew -padx 5 -pady 5
-        
+
         # Swimlane header
         frame .content.canvas.frame.sw$swimlaneId.header -bg #2196F3
         pack .content.canvas.frame.sw$swimlaneId.header -fill x
-        
+
         label .content.canvas.frame.sw$swimlaneId.header.title -text $swimlaneName \
             -bg #2196F3 -fg white -font {-size 12 -weight bold} -anchor w
         pack .content.canvas.frame.sw$swimlaneId.header.title -side left -padx 10 -pady 5
 
-        # Drag handle and move buttons for swimlane
+        # Edit swimlane title button (to the right of the title)
+        button .content.canvas.frame.sw$swimlaneId.header.edittitle -text "Edit" \
+            -command [list showEditSwimlaneDialog $swimlaneId] -bg #e3f2fd -fg #0d47a1 \
+            -activebackground #bbdefb -activeforeground #0d47a1 -relief raised \
+            -borderwidth 1 -font {-size 8 -weight bold}
+        pack .content.canvas.frame.sw$swimlaneId.header.edittitle -side left -padx 4
+        addTooltip .content.canvas.frame.sw$swimlaneId.header.edittitle "Edit swimlane title"
+
+        # Move buttons for swimlane
         button .content.canvas.frame.sw$swimlaneId.header.moveup -text "▲" \
             -command [list moveSwimlaneUp $swimlaneId] -bg #e3f2fd -fg #1976D2 \
             -relief raised -borderwidth 1 -width 2 -font {-size 8}
@@ -734,6 +743,15 @@ proc refreshSwimlanes {boardId} {
                 -text $listName -bg #e0e0e0 -font {-weight bold} -anchor w
             pack .content.canvas.frame.sw$swimlaneId.lists.l$listId.header.title \
                 -side left -padx 5 -pady 3
+
+            # Edit list title button (to the right of the title)
+            button .content.canvas.frame.sw$swimlaneId.lists.l$listId.header.edittitle \
+                -text "Edit" -command [list showEditListDialog $listId] -bg #f5f5f5 -fg #0d47a1 \
+                -activebackground #e3f2fd -activeforeground #0d47a1 -relief raised \
+                -borderwidth 1 -font {-size 8 -weight bold}
+            pack .content.canvas.frame.sw$swimlaneId.lists.l$listId.header.edittitle \
+                -side left -padx 3
+            addTooltip .content.canvas.frame.sw$swimlaneId.lists.l$listId.header.edittitle "Edit list title"
 
             # Drag handle and move buttons for list. To keep Delete at far right, pack it first with -side right.
             button .content.canvas.frame.sw$swimlaneId.lists.l$listId.header.del -text "Delete" \
@@ -950,6 +968,51 @@ proc showNewBoardDialog {} {
     focus .newboard.name
 }
 
+proc showEditBoardDialog {boardId} {
+    # Fetch current board data
+    db eval {SELECT name, description FROM boards WHERE id = $boardId} {
+        toplevel .editboard
+        wm title .editboard "Edit Board"
+        wm geometry .editboard 400x220
+
+        label .editboard.namelbl -text "Board Name:" -anchor w
+        entry .editboard.name -width 40
+        .editboard.name insert 0 $name
+        pack .editboard.namelbl -pady 5 -padx 5 -anchor w
+        pack .editboard.name -pady 5
+
+        label .editboard.desclbl -text "Description:" -anchor w
+        entry .editboard.desc -width 40
+        .editboard.desc insert 0 $description
+        pack .editboard.desclbl -pady 5 -padx 5 -anchor w
+        pack .editboard.desc -pady 5
+
+        frame .editboard.buttons
+        pack .editboard.buttons -pady 15
+
+        button .editboard.buttons.save -text "Save" -command [list saveBoardFromDialog $boardId] \
+            -bg #4CAF50 -fg black -activebackground #45a049 -activeforeground black
+        pack .editboard.buttons.save -side left -padx 5
+
+        button .editboard.buttons.cancel -text "Cancel" -command {destroy .editboard}
+        pack .editboard.buttons.cancel -side left -padx 5
+
+        focus .editboard.name
+    }
+}
+
+proc saveBoardFromDialog {boardId} {
+    if {![winfo exists .editboard]} { return }
+    set name [.editboard.name get]
+    set description [.editboard.desc get]
+    if {$name ne ""} {
+        db eval {UPDATE boards SET name = $name, description = $description WHERE id = $boardId}
+        destroy .editboard
+        refreshSwimlanes $boardId
+        refreshBoards
+    }
+}
+
 proc showNewSwimlaneDialog {boardId} {
     toplevel .newswimlane
     wm title .newswimlane "Create New Swimlane"
@@ -971,6 +1034,43 @@ proc showNewSwimlaneDialog {boardId} {
     pack .newswimlane.buttons.cancel -side left -padx 5
     
     focus .newswimlane.name
+}
+
+proc showEditSwimlaneDialog {swimlaneId} {
+    db eval {SELECT name, board_id FROM swimlanes WHERE id = $swimlaneId} {
+        set boardId $board_id
+        toplevel .editswimlane
+        wm title .editswimlane "Edit Swimlane"
+        wm geometry .editswimlane 400x140
+
+        label .editswimlane.namelbl -text "Swimlane Name:" -anchor w
+        entry .editswimlane.name -width 40
+        .editswimlane.name insert 0 $name
+        pack .editswimlane.namelbl -pady 5 -padx 5 -anchor w
+        pack .editswimlane.name -pady 5
+
+        frame .editswimlane.buttons
+        pack .editswimlane.buttons -pady 15
+
+        button .editswimlane.buttons.save -text "Save" -command [list saveSwimlaneFromDialog $swimlaneId $boardId] \
+            -bg #4CAF50 -fg black -activebackground #45a049 -activeforeground black
+        pack .editswimlane.buttons.save -side left -padx 5
+
+        button .editswimlane.buttons.cancel -text "Cancel" -command {destroy .editswimlane}
+        pack .editswimlane.buttons.cancel -side left -padx 5
+
+        focus .editswimlane.name
+    }
+}
+
+proc saveSwimlaneFromDialog {swimlaneId boardId} {
+    if {![winfo exists .editswimlane]} { return }
+    set name [.editswimlane.name get]
+    if {$name ne ""} {
+        db eval {UPDATE swimlanes SET name = $name WHERE id = $swimlaneId}
+        destroy .editswimlane
+        refreshSwimlanes $boardId
+    }
 }
 
 proc createSwimlaneFromDialog {boardId} {
@@ -1002,6 +1102,44 @@ proc showNewListDialog {swimlaneId} {
     pack .newlist.buttons.cancel -side left -padx 5
     
     focus .newlist.name
+}
+
+proc showEditListDialog {listId} {
+    db eval {SELECT name, swimlane_id FROM lists WHERE id = $listId} {
+        set swimlaneId $swimlane_id
+        set boardId [db eval {SELECT board_id FROM swimlanes WHERE id = $swimlaneId}]
+        toplevel .editlist
+        wm title .editlist "Edit List"
+        wm geometry .editlist 400x140
+
+        label .editlist.namelbl -text "List Name:" -anchor w
+        entry .editlist.name -width 40
+        .editlist.name insert 0 $name
+        pack .editlist.namelbl -pady 5 -padx 5 -anchor w
+        pack .editlist.name -pady 5
+
+        frame .editlist.buttons
+        pack .editlist.buttons -pady 15
+
+        button .editlist.buttons.save -text "Save" -command [list saveListFromDialog $listId $boardId] \
+            -bg #4CAF50 -fg black -activebackground #45a049 -activeforeground black
+        pack .editlist.buttons.save -side left -padx 5
+
+        button .editlist.buttons.cancel -text "Cancel" -command {destroy .editlist}
+        pack .editlist.buttons.cancel -side left -padx 5
+
+        focus .editlist.name
+    }
+}
+
+proc saveListFromDialog {listId boardId} {
+    if {![winfo exists .editlist]} { return }
+    set name [.editlist.name get]
+    if {$name ne ""} {
+        db eval {UPDATE lists SET name = $name WHERE id = $listId}
+        destroy .editlist
+        refreshSwimlanes $boardId
+    }
 }
 
 proc createListFromDialog {swimlaneId} {
