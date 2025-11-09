@@ -519,6 +519,16 @@ func initDatabase() {
 	}
 }
 
+func getBoardByID(boardID int) *Board {
+	row := db.QueryRow("SELECT id, name, description FROM boards WHERE id = ?", boardID)
+	var board Board
+	err := row.Scan(&board.ID, &board.Name, &board.Description)
+	if err != nil {
+		return nil
+	}
+	return &board
+}
+
 func getBoards() []Board {
 	rows, err := db.Query("SELECT id, name, description FROM boards ORDER BY name")
 	if err != nil {
@@ -1026,7 +1036,11 @@ func updateBoard(boardID int, name, description string) {
 	if err != nil {
 		fmt.Println("Error updating board:", err)
 	}
-	refreshBoardList()
+	refreshBoardContainer()
+	// Update window title if current board was edited
+	if boardID == currentBoardID {
+		loadBoard(boardID)
+	}
 }
 
 func updateSwimlane(swimlaneID int, name string) {
@@ -1384,6 +1398,16 @@ func createMainWindow(a fyne.App) fyne.Window {
 }
 
 func loadBoard(boardID int) {
+	// Update window title with current board
+	if boardID > 0 {
+		board := getBoardByID(boardID)
+		if board != nil {
+			mainWindow.SetTitle(fmt.Sprintf("Go Kanban Board - %d: %s", board.ID, board.Name))
+		}
+	} else {
+		mainWindow.SetTitle("Go Kanban Board")
+	}
+	
 	mainArea.RemoveAll()
 
 	swimlanes := getSwimlanes(boardID)
