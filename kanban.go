@@ -3,6 +3,7 @@ package main
 import (
 	"database/sql"
 	"fmt"
+	"time"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
@@ -53,31 +54,63 @@ var mainWindow fyne.Window
 var draggedCard *DraggableCard
 var draggedList *DraggableList
 var currentTooltip *widget.PopUp
+var tooltipTimer *time.Timer
+var hideTooltipTimer *time.Timer
 
 // Tooltip functions
-func showTooltip(obj fyne.CanvasObject, text string) {
-	if currentTooltip != nil {
-		currentTooltip.Hide()
+func showTooltip(mousePos fyne.Position, text string) {
+	// Cancel any pending hide
+	if hideTooltipTimer != nil {
+		hideTooltipTimer.Stop()
+		hideTooltipTimer = nil
 	}
 	
-	label := widget.NewLabel(text)
-	label.Resize(fyne.NewSize(200, 30))
-	
-	currentTooltip = widget.NewPopUp(label, mainWindow.Canvas())
-	
-	// Position the tooltip near the object
-	pos := obj.Position()
-	size := obj.Size()
-	tooltipPos := fyne.NewPos(pos.X, pos.Y+size.Height+5)
-	currentTooltip.Move(tooltipPos)
-	currentTooltip.Show()
-}
-
-func hideTooltip() {
+	// If already showing a tooltip, update it immediately
 	if currentTooltip != nil {
 		currentTooltip.Hide()
 		currentTooltip = nil
 	}
+	
+	// Delay showing tooltip to prevent flashing
+	if tooltipTimer != nil {
+		tooltipTimer.Stop()
+	}
+	
+	tooltipTimer = time.AfterFunc(500*time.Millisecond, func() {
+		fyne.DoAndWait(func() {
+			label := widget.NewLabel(text)
+			label.Resize(fyne.NewSize(200, 30))
+			
+			currentTooltip = widget.NewPopUp(label, mainWindow.Canvas())
+			
+			// Position the tooltip near the mouse cursor
+			tooltipPos := fyne.NewPos(mousePos.X+10, mousePos.Y+10)
+			currentTooltip.Move(tooltipPos)
+			currentTooltip.Show()
+		})
+	})
+}
+
+func hideTooltip() {
+	// Cancel any pending show
+	if tooltipTimer != nil {
+		tooltipTimer.Stop()
+		tooltipTimer = nil
+	}
+	
+	// Delay hiding tooltip to prevent flashing when moving between button and tooltip
+	if hideTooltipTimer != nil {
+		hideTooltipTimer.Stop()
+	}
+	
+	hideTooltipTimer = time.AfterFunc(200*time.Millisecond, func() {
+		fyne.DoAndWait(func() {
+			if currentTooltip != nil {
+				currentTooltip.Hide()
+				currentTooltip = nil
+			}
+		})
+	})
 }
 
 // Custom button with tooltip support
@@ -87,7 +120,7 @@ type TooltipButton struct {
 }
 
 func (t *TooltipButton) MouseIn(ev *desktop.MouseEvent) {
-	showTooltip(t, t.tooltipText)
+	showTooltip(ev.Position, t.tooltipText)
 }
 
 func (t *TooltipButton) MouseOut() {
