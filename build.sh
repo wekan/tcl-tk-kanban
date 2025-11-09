@@ -14,27 +14,31 @@ NC='\033[0m' # No Color
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 cd "$SCRIPT_DIR"
 
+# --- Utility Functions ---
+
 # Display banner
 show_banner() {
     echo -e "${BLUE}"
     echo "╔════════════════════════════════════════╗"
-    echo "║   Tcl/Tk Kanban Build & Run Script    ║"
-    echo "╔════════════════════════════════════════╗"
+    echo "║   Tcl/Tk Kanban Build & Run Script     ║"
+    echo "╚════════════════════════════════════════╝"
     echo -e "${NC}"
 }
 
 # Display menu
 show_menu() {
     echo -e "${GREEN}Please select an option:${NC}"
-    echo "1) Run Kanban application"
-    echo "2) Build TclKit .kit file"
+    echo "1) Run Kanban application (Tcl interpreter)"
+    echo "2) Build TclKit .kit file (Simple build)"
     echo "3) Run .kit file (if built)"
+    echo "9) Build executable (macOS app bundle)"
     echo "4) Clean build artifacts"
     echo "5) Check dependencies"
-    echo "7) Build Go XLSX exporter"
+    echo "7) Build Go XLSX exporter (binary)"
+    echo "8) Build Go XLSX exporter as .so and embed in .kit"
     echo "6) Exit"
     echo ""
-    echo -n "Enter your choice [1-7]: "
+    echo -n "Enter your choice [1-9]: "
 }
 
 # Check if tclsh is available
@@ -60,8 +64,7 @@ package require sqlite3
 EOF
         echo -e "${RED}Error: SQLite3 Tcl package is not installed${NC}"
         echo "Please install it:"
-        echo "  - macOS: brew install tcl-tk (includes sqlite3)"
-        echo "  - Linux: apt-get install libsqlite3-tcl"
+        echo "  - macOS/Linux: Often included with tcl-tk or via libsqlite3-tcl package"
         return 1
     fi
     
@@ -93,9 +96,7 @@ check_dependencies() {
         echo -e "${GREEN}✓ sdx found: $(which sdx)${NC}"
     else
         echo -e "${YELLOW}⚠ sdx not found (optional, needed for building .kit files)${NC}"
-        echo "To install sdx:"
-        echo "  1. Download from: https://github.com/aidanhs/starkit"
-        echo "  2. Or install tclkit and sdx manually"
+        echo "To install sdx, get TclKit and sdx.kit from equi4.com or a Tclkit mirror."
     fi
     
     echo ""
@@ -107,7 +108,7 @@ check_dependencies() {
     fi
 }
 
-# Run the application
+# Run the Tcl script directly
 run_app() {
     echo -e "${BLUE}Starting Kanban application...${NC}"
     
@@ -125,26 +126,22 @@ run_app() {
     ./kanban.tcl
 }
 
-# Build .kit file
-build_kit() {
-    echo -e "${BLUE}Building TclKit .kit file...${NC}"
-    echo ""
-    
-    if ! command -v sdx &> /dev/null; then
-        echo -e "${RED}Error: sdx is not installed${NC}"
-        echo "sdx is required to build .kit files"
-        echo ""
-        echo "Alternative methods to create standalone executables:"
-        echo "1. Use freewrap: https://freewrap.sourceforge.net/"
-        echo "2. Use tclkit + sdx: https://wiki.tcl-lang.org/page/sdx"
-        echo "3. Package as starpack/starkit"
-        echo ""
-        echo -e "${YELLOW}For now, you can run the application directly with: ./build.sh -> Option 1${NC}"
+# Run the .kit file
+run_kit() {
+    echo -e "${BLUE}Starting Kanban application from kanban.kit...${NC}"
+
+    if [ ! -f "kanban.kit" ]; then
+        echo -e "${RED}Error: kanban.kit not found! Please build it first (Option 2 or 8).${NC}"
         return 1
     fi
     
-    # Create VFS directory structure
-    echo "Creating VFS structure..."
+    chmod +x kanban.kit
+    ./kanban.kit
+}
+
+# Core function to create VFS structure and wrap it into kanban.kit
+wrap_kit() {
+    echo -e "${BLUE}Creating VFS structure and wrapping into kanban.kit...${NC}"
     mkdir -p kanban.vfs/lib/app-kanban
     
     # Copy main script
@@ -163,109 +160,224 @@ EOF
 package ifneeded app-kanban 1.0 [list source [file join $dir kanban.tcl]]
 EOF
     
-    # Wrap it
-    echo "Wrapping with sdx..."
-    sdx wrap kanban.kit -vfs kanban.vfs
+    TCLKIT="./tclkit"
+    SDXKIT="./sdx.kit"
     
-    # Make it executable
-    chmod +x kanban.kit
-    
-    echo ""
-    echo -e "${GREEN}✓ Successfully built kanban.kit${NC}"
-    echo "You can now run it with: ./kanban.kit"
-}
-
-# Run .kit file
-run_kit() {
-    echo -e "${BLUE}Running kanban.kit...${NC}"
-    
-    if [ ! -f "kanban.kit" ]; then
-        echo -e "${RED}Error: kanban.kit not found!${NC}"
-        echo "Please build it first using option 2"
+    # Check for wrapping tool
+    if [ -x "$TCLKIT" ] && [ -f "$SDXKIT" ]; then
+        echo -e "${GREEN}Using local tclkit and sdx.kit for wrapping.${NC}"
+        WRAP_CMD="$TCLKIT $SDXKIT wrap kanban.kit -vfs kanban.vfs"
+    elif command -v sdx &> /dev/null; then
+        echo -e "${YELLOW}Using system sdx for wrapping.${NC}"
+        WRAP_CMD="sdx wrap kanban.kit -vfs kanban.vfs"
+    else
+        echo -e "${RED}Error: TclKit and SDX not found!${NC}"
+        echo "Please ensure 'sdx' is in your PATH or place 'tclkit' (executable) and 'sdx.kit' in your project directory."
         return 1
     fi
     
-    ./kanban.kit
+    echo "Wrapping with SDX..."
+    eval $WRAP_CMD
+    
+    if [ $? -eq 0 ]; then
+        chmod +x kanban.kit
+        echo ""
+        echo -e "${GREEN}✓ Successfully built kanban.kit${NC}"
+        echo "You can now run it with: ./kanban.kit"
+        return 0
+    else
+        echo -e "${RED}Error during SDX wrapping.${NC}"
+        return 1
+    fi
+}
+
+# Build .kit file (Simple version without Go embed)
+build_kit() {
+    echo -e "${BLUE}Building TclKit .kit file (no Go embed)...${NC}"
+    
+    if ! command -v sdx &> /dev/null && (! [ -x "./tclkit" ] || ! [ -f "./sdx.kit" ]); then
+        echo -e "${RED}Error: sdx or local tclkit/sdx.kit is not installed/present${NC}"
+        return 1
+    fi
+    
+    wrap_kit
 }
 
 # Clean build artifacts
 clean_build() {
     echo -e "${BLUE}Cleaning build artifacts...${NC}"
     
-    if [ -d "kanban.vfs" ]; then
-        rm -rf kanban.vfs
-        echo "Removed kanban.vfs/"
-    fi
+    rm -rf kanban.kit kanban.vfs xlsx_exporter xlsx_exporter_embed.so
     
-    if [ -f "kanban.kit" ]; then
-        rm -f kanban.kit
-        echo "Removed kanban.kit"
-    fi
-    
-    echo -e "${GREEN}✓ Clean complete${NC}"
+    echo -e "${GREEN}✓ Build artifacts cleaned${NC}"
 }
 
 # Build Go XLSX exporter binary
-build_go_exporter() {
-    echo -e "${BLUE}Building Go XLSX exporter...${NC}"
+build_go_binary() {
+    echo -e "${BLUE}Building Go XLSX exporter binary...${NC}"
+    
     if ! command -v go &> /dev/null; then
         echo -e "${RED}Error: Go is not installed or not in PATH${NC}"
-        echo "Please install Go from https://golang.org/dl/"
         return 1
     fi
-    if [ ! -f "xlsx_exporter.go" ]; then
-        echo -e "${RED}Error: xlsx_exporter.go not found!${NC}"
-        return 1
-    fi
-    if [ ! -f "go.mod" ]; then
-        echo -e "${YELLOW}Initializing Go module...${NC}"
-        go mod init tcl-tk-kanban
-    fi
-    echo -e "${YELLOW}Ensuring Go dependencies...${NC}"
-    go get github.com/mattn/go-sqlite3
-    go get github.com/xuri/excelize/v2
-    go build -o xlsx_exporter xlsx_exporter.go && echo -e "${GREEN}✓ Successfully built xlsx_exporter${NC}"
-}
-
-# Main menu loop
-main() {
-    show_banner
     
-    while true; do
-        echo ""
-        show_menu
-        read -r choice
-        echo ""
-        
-        case $choice in
-            1)
-                run_app
-                ;;
-            2)
-                build_kit
-                ;;
-            3)
-                run_kit
-                ;;
-            4)
-                clean_build
-                ;;
-            5)
-                check_dependencies
-                ;;
-            7)
-                build_go_exporter
-                ;;
-            6)
-                echo -e "${GREEN}Goodbye!${NC}"
-                exit 0
-                ;;
-            *)
-                echo -e "${RED}Invalid option. Please choose 1-7.${NC}"
-                ;;
-        esac
-    done
+    if [ ! -f "xlsx.go" ]; then
+        echo -e "${RED}Error: xlsx.go not found!${NC}"
+        return 1
+    fi
+    
+    go build -o xlsx_exporter xlsx.go
+    
+    if [ $? -eq 0 ]; then
+        echo -e "${GREEN}✓ Go binary built: xlsx_exporter${NC}"
+        return 0
+    else
+        echo -e "${RED}Error building Go binary${NC}"
+        return 1
+    fi
 }
 
-# Run main function
-main
+# Build Go XLSX exporter as .so and embed in .kit
+build_go_so_embed() {
+    echo -e "${BLUE}Building Go XLSX exporter as .so and embedding in .kit...${NC}"
+    
+    if ! command -v go &> /dev/null; then
+        echo -e "${RED}Error: Go is not installed or not in PATH${NC}"
+        return 1
+    fi
+    
+    if [ ! -f "xlsx_exporter_embed.go" ]; then
+        echo -e "${RED}Error: xlsx_exporter_embed.go not found!${NC}"
+        return 1
+    fi
+    
+    go build -buildmode=c-shared -o xlsx_exporter_embed.so xlsx_exporter_embed.go
+    
+    if [ $? -ne 0 ]; then
+        echo -e "${RED}Error building Go .so${NC}"
+        return 1
+    fi
+    
+    # Create VFS with .so embedded
+    mkdir -p kanban.vfs/lib/app-kanban
+    cp kanban.tcl kanban.vfs/lib/app-kanban/
+    cp xlsx_exporter_embed.so kanban.vfs/lib/app-kanban/
+    
+    # Create main.tcl wrapper
+    cat > kanban.vfs/main.tcl << 'EOF'
+#!/usr/bin/env tclsh
+package require starkit
+starkit::startup
+source [file join $starkit::topdir lib app-kanban kanban.tcl]
+EOF
+    
+    # Create pkgIndex.tcl
+    cat > kanban.vfs/lib/app-kanban/pkgIndex.tcl << 'EOF'
+package ifneeded app-kanban 1.0 [list source [file join $dir kanban.tcl]]
+EOF
+    
+    wrap_kit
+}
+
+# Build single executable (tclkit + kanban.kit)
+build_single_executable() {
+    echo -e "${BLUE}Building single executable (tclkit + kanban.kit)...${NC}"
+    
+    if [ ! -x "./tclkit" ]; then
+        echo -e "${RED}Error: tclkit not found or not executable${NC}"
+        return 1
+    fi
+    
+    if [ ! -f "kanban.kit" ]; then
+        echo -e "${RED}Error: kanban.kit not found! Build it first (Option 2 or 8).${NC}"
+        return 1
+    fi
+    
+    if [ ! -f "./sdx.kit" ]; then
+        echo -e "${RED}Error: sdx.kit not found!${NC}"
+        return 1
+    fi
+    
+    # Create macOS app bundle structure
+    mkdir -p kanban.app/Contents/MacOS
+    mkdir -p kanban.app/Contents/Resources
+    
+    # Wrap the executable into the app bundle
+    ./tclkit ./sdx.kit wrap kanban.app/Contents/MacOS/kanban kanban.kit -runtime ./tclkit
+    
+    if [ $? -ne 0 ]; then
+        echo -e "${RED}Error wrapping executable${NC}"
+        return 1
+    fi
+    
+    # Create Info.plist for macOS app bundle
+    cat > kanban.app/Contents/Info.plist << 'EOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleExecutable</key>
+    <string>kanban</string>
+    <key>CFBundleIdentifier</key>
+    <string>com.example.kanban</string>
+    <key>CFBundleName</key>
+    <string>Kanban</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleVersion</key>
+    <string>1.0</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>10.10</string>
+</dict>
+</plist>
+EOF
+    
+    chmod +x kanban.app/Contents/MacOS/kanban
+    
+    echo -e "${GREEN}✓ macOS app bundle built: kanban.app${NC}"
+    echo "You can run it with: open kanban.app"
+    return 0
+}
+
+# --- Main Script ---
+
+show_banner
+
+while true; do
+    show_menu
+    read choice
+    case $choice in
+        1)
+            run_app
+            ;;
+        2)
+            build_kit
+            ;;
+        3)
+            run_kit
+            ;;
+        4)
+            clean_build
+            ;;
+        5)
+            check_dependencies
+            ;;
+        6)
+            echo -e "${GREEN}Exiting...${NC}"
+            exit 0
+            ;;
+        7)
+            build_go_binary
+            ;;
+        8)
+            build_go_so_embed
+            ;;
+        9)
+            build_single_executable
+            ;;
+        *)
+            echo -e "${RED}Invalid option. Please choose 1-9.${NC}"
+            ;;
+    esac
+    echo ""
+done

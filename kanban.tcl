@@ -1256,14 +1256,30 @@ proc showCardDetails {cardId} {
 proc exportBoardToExcel {boardId} {
     # Get the directory of the current script (kanban.tcl)
     set scriptDir [file dirname [info script]]
-    set exporterPath [file join $scriptDir xlsx_exporter]
+    set soPath [file join $scriptDir "xlsx_exporter_embed.so"]
+    set binPath [file join $scriptDir "xlsx_exporter"]
     set exportFile [file join $scriptDir "board_${boardId}_export.xlsx"]
-    set result ""
-    set code [catch {exec $exporterPath $boardId $exportFile} result]
-    if {$code == 0} {
-        tk_messageBox -message "Board exported to $exportFile (XLSX)." -type ok
+    if {[file exists $soPath]} {
+        if {[catch {load $soPath} loadErr]} {
+            tk_messageBox -title "Export Error" -message "Failed to load Go .so: $loadErr" -type ok
+            return
+        }
+        set result [catch {ExportBoardToXLSX $boardId $exportFile} code]
+        if {$result == 0} {
+            tk_messageBox -message "Board exported to $exportFile (XLSX) via embedded Go .so." -type ok
+        } else {
+            tk_messageBox -title "Export Error" -message "Failed to export board to XLSX via Go .so.\n\nError code: $result" -type ok
+        }
+    } elseif {[file exists $binPath]} {
+        set result ""
+        set code [catch {exec $binPath $boardId $exportFile} result]
+        if {$code == 0} {
+            tk_messageBox -message "Board exported to $exportFile (XLSX) via Go binary." -type ok
+        } else {
+            tk_messageBox -title "Export Error" -message "Failed to export board to XLSX via Go binary.\n\nError: $result" -type ok
+        }
     } else {
-        tk_messageBox -title "Export Error" -message "Failed to export board to XLSX.\n\nError: $result\n\nMake sure xlsx_exporter is built and in the project directory." -type ok
+        tk_messageBox -title "Export Error" -message "No XLSX export method found. Please build xlsx_exporter_embed.so or xlsx_exporter binary." -type ok
     }
 }
 

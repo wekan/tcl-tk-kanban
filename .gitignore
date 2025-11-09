@@ -38,4 +38,8 @@ kanban.vfs/
 /xlsx_exporter
 /xlsx_exporter.exe
 
-
+# Generated TclKit executeable and Mac app
+/kanban
+/kanban.app/
+/xlsx_exporter_embed.h
+/xlsx_exporter_embed.so
