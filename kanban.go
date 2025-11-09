@@ -1246,6 +1246,30 @@ func refreshBoardList() {
 	refreshBoardContainer()
 }
 
+// Confirmation dialog function
+func showConfirmDialog(title, message string, onConfirm func()) {
+	cancelBtn := widget.NewButton("Cancel", func() {})
+	confirmBtn := widget.NewButton("Delete", func() {})
+	
+	content := container.NewVBox(
+		widget.NewLabel(title),
+		widget.NewLabel(message),
+		container.NewHBox(cancelBtn, confirmBtn),
+	)
+	
+	dialog := widget.NewModalPopUp(content, mainWindow.Canvas())
+	cancelBtn.OnTapped = dialog.Hide
+	confirmBtn.OnTapped = func() {
+		onConfirm()
+		dialog.Hide()
+	}
+	
+	// Style the confirm button to look dangerous
+	confirmBtn.Importance = widget.DangerImportance
+	
+	dialog.Show()
+}
+
 // XLSX Export function (from xlsx_exporter.go)
 func exportBoardToXLSX(boardID int, outputFile string) error {
 	f := excelize.NewFile()
@@ -1340,15 +1364,24 @@ func createMainWindow(a fyne.App) fyne.Window {
 
 	deleteBoardBtn := NewTooltipButton("Delete Board", "Delete current board", func() {
 		if currentBoardID > 0 {
-			deleteBoard(currentBoardID)
-			// Select first available board
-			boards := getBoards()
-			if len(boards) > 0 {
-				currentBoardID = boards[0].ID
-				loadBoard(currentBoardID)
-			} else {
-				currentBoardID = 0
-				loadBoard(0)
+			board := getBoardByID(currentBoardID)
+			if board != nil {
+				showConfirmDialog(
+					"Delete Board",
+					fmt.Sprintf("Are you sure you want to delete board '%s'? This will also delete all swimlanes, lists, and cards in this board. This action cannot be undone.", board.Name),
+					func() {
+						deleteBoard(currentBoardID)
+						// Select first available board
+						boards := getBoards()
+						if len(boards) > 0 {
+							currentBoardID = boards[0].ID
+							loadBoard(currentBoardID)
+						} else {
+							currentBoardID = 0
+							loadBoard(0)
+						}
+					},
+				)
 			}
 		}
 	})
@@ -1420,7 +1453,13 @@ func loadBoard(boardID int) {
 		addSwimlaneBtn := NewTooltipButton("+", "Add swimlane", func() { showNewSwimlaneDialog(s.BoardID) })
 		editSwimlaneBtn := NewTooltipButton("E", "Edit swimlane name", func() { showEditSwimlaneDialog(s.ID) })
 		cloneSwimlaneBtn := NewTooltipButton("C", "Clone swimlane", func() { cloneSwimlane(s.ID); loadBoard(s.BoardID) })
-		deleteSwimlaneBtn := NewTooltipButton("X", "Delete swimlane", func() { deleteSwimlane(s.ID); loadBoard(s.BoardID) })
+		deleteSwimlaneBtn := NewTooltipButton("X", "Delete swimlane", func() { 
+			showConfirmDialog(
+				"Delete Swimlane", 
+				fmt.Sprintf("Are you sure you want to delete swimlane '%s'? This will also delete all lists and cards in this swimlane. This action cannot be undone.", s.Name),
+				func() { deleteSwimlane(s.ID); loadBoard(s.BoardID) },
+			)
+		})
 		swimlaneHeader := container.NewHBox(swimlaneLabel, swimlaneUpBtn, swimlaneDownBtn, addSwimlaneBtn, editSwimlaneBtn, cloneSwimlaneBtn, deleteSwimlaneBtn)
 
 		lists := getLists(s.ID)
@@ -1435,7 +1474,13 @@ func loadBoard(boardID int) {
 			addListBtn := NewTooltipButton("+", "Add list", func() { showNewListDialog(l.SwimlaneID) })
 			editListBtn := NewTooltipButton("E", "Edit list name", func() { showEditListDialog(l.ID) })
 			cloneListBtn := NewTooltipButton("C", "Clone list", func() { cloneList(l.ID); loadBoard(s.BoardID) })
-			deleteListBtn := NewTooltipButton("X", "Delete list", func() { deleteList(l.ID); loadBoard(s.BoardID) })
+			deleteListBtn := NewTooltipButton("X", "Delete list", func() { 
+				showConfirmDialog(
+					"Delete List",
+					fmt.Sprintf("Are you sure you want to delete list '%s'? This will also delete all cards in this list. This action cannot be undone.", l.Name),
+					func() { deleteList(l.ID); loadBoard(s.BoardID) },
+				)
+			})
 			listHeader := container.NewHBox(listLabel, listUpBtn, listDownBtn, listLeftBtn, listRightBtn, addListBtn, editListBtn, cloneListBtn, deleteListBtn)
 
 			cards := getCards(l.ID)
@@ -1465,7 +1510,13 @@ func loadBoard(boardID int) {
 				addCardBtn := NewTooltipButton("+", "Add card", func() { showNewCardDialog(c.ListID) })
 				editCardBtn := NewTooltipButton("E", "Edit card title and description", func() { showEditCardDialog(c.ID) })
 				cloneCardBtn := NewTooltipButton("C", "Clone card", func() { cloneCard(c.ID); loadBoard(s.BoardID) })
-				deleteCardBtn := NewTooltipButton("X", "Delete card", func() { deleteCard(c.ID); loadBoard(s.BoardID) })
+				deleteCardBtn := NewTooltipButton("X", "Delete card", func() { 
+					showConfirmDialog(
+						"Delete Card",
+						fmt.Sprintf("Are you sure you want to delete card '%s'? This action cannot be undone.", c.Title),
+						func() { deleteCard(c.ID); loadBoard(s.BoardID) },
+					)
+				})
 				
 				// Create a container for the card with buttons
 				cardContainer := container.NewVBox(
