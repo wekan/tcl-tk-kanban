@@ -10,7 +10,9 @@ A full-featured Kanban board application with both Tcl/Tk and Go GUI implementat
 - 🎫 **Cards**: Add, edit, and manage cards with titles and descriptions
 - 💾 **SQLite Storage**: All data persists to `wekan.db` SQLite database
 - 🎨 **Clean GUI**: Intuitive Tcl/Tk interface with color-coded elements
-- �️ **Cross-platform Go GUI**: Modern Fyne-based interface available
+- 🖥️ **Cross-platform Go GUI**: Modern Fyne-based interface available
+- 🖱️ **Drag & Drop**: Full drag and drop support for cards, lists, and swimlanes
+- � **File Attachments**: Drag files onto cards to attach them
 - �📦 **Portable**: Can be built as a standalone .kit file
 - 📊 **XLSX Export**: Export boards to Excel files with image attachments using Go and Excelize
 
@@ -136,7 +138,16 @@ A modern GUI version built with Go and Fyne is also available:
 ./kanban_go
 ```
 
-The Go version provides the same functionality with a native cross-platform interface.
+The Go version provides a modern, native GUI experience while maintaining all the original functionality of the Tcl/Tk version, including full drag & drop support for cards, lists, and swimlanes.
+
+### Drag & Drop Features
+
+The Go GUI includes comprehensive drag and drop functionality:
+
+- **Card Movement**: Drag cards between lists within the same swimlane
+- **List Movement**: Drag entire lists between swimlanes  
+- **File Attachments**: Drag files from your file manager onto cards to attach them
+- **Real-time Updates**: All changes are immediately saved to the SQLite database
 
 ### Create sample data (optional)
 
