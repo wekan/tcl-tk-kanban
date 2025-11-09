@@ -38,6 +38,9 @@ kanban.vfs/
 /xlsx_exporter
 /xlsx_exporter.exe
 
+# Go Fyne GUI executeable with XLSX export
+/kanban_go
+
 # Generated TclKit executeable and Mac app
 /kanban
 /kanban.app/

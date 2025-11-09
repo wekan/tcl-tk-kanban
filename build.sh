@@ -37,9 +37,10 @@ show_menu() {
     echo "7) Run Kanban application (Tcl interpreter)"
     echo "8) Run .kit file (if built)"
     echo "9) Clean build artifacts"
-    echo "10) Exit"
+    echo "10) Build Go GUI executable"
+    echo "11) Exit"
     echo ""
-    echo -n "Enter your choice [1-10]: "
+    echo -n "Enter your choice [1-11]: "
 }
 
 # Check if tclsh is available
@@ -366,6 +367,31 @@ build_tclkit() {
     fi
 }
 
+# Build Go GUI executable
+build_go_gui() {
+    echo -e "${BLUE}Building Go GUI executable...${NC}"
+    
+    if ! command -v go &> /dev/null; then
+        echo -e "${RED}Error: Go is not installed or not in PATH${NC}"
+        return 1
+    fi
+    
+    if [ ! -f "kanban.go" ]; then
+        echo -e "${RED}Error: kanban.go not found!${NC}"
+        return 1
+    fi
+    
+    go build -o kanban_go kanban.go
+    
+    if [ $? -eq 0 ]; then
+        echo -e "${GREEN}✓ Go GUI executable built: kanban_go${NC}"
+        return 0
+    else
+        echo -e "${RED}Error building Go GUI executable${NC}"
+        return 1
+    fi
+}
+
 # --- Main Script ---
 
 show_banner
@@ -402,11 +428,14 @@ while true; do
             clean_build
             ;;
         10)
+            build_go_gui
+            ;;
+        11)
             echo -e "${GREEN}Exiting...${NC}"
             exit 0
             ;;
         *)
-            echo -e "${RED}Invalid option. Please choose 1-10.${NC}"
+            echo -e "${RED}Invalid option. Please choose 1-11.${NC}"
             ;;
     esac
     echo ""

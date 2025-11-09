@@ -1,6 +1,6 @@
-# Tcl/Tk Kanban Board
+# Tcl/Tk and Go Kanban Board
 
-A full-featured Kanban board application built with Tcl/Tk that saves boards, swimlanes, lists, and cards to a SQLite database.
+A full-featured Kanban board application with both Tcl/Tk and Go GUI implementations. Saves boards, swimlanes, lists, and cards to a SQLite database.
 
 ## Features
 
@@ -10,7 +10,8 @@ A full-featured Kanban board application built with Tcl/Tk that saves boards, sw
 - 🎫 **Cards**: Add, edit, and manage cards with titles and descriptions
 - 💾 **SQLite Storage**: All data persists to `wekan.db` SQLite database
 - 🎨 **Clean GUI**: Intuitive Tcl/Tk interface with color-coded elements
-- 📦 **Portable**: Can be built as a standalone .kit file
+- �️ **Cross-platform Go GUI**: Modern Fyne-based interface available
+- �📦 **Portable**: Can be built as a standalone .kit file
 - 📊 **XLSX Export**: Export boards to Excel files with image attachments using Go and Excelize
 
 ## XLSX Export
@@ -124,6 +125,18 @@ tclsh kanban.tcl
 # or
 ./kanban.tcl
 ```
+
+### Go GUI Version
+
+A modern GUI version built with Go and Fyne is also available:
+
+```bash
+./build.sh
+# Select option 10: Build Go GUI executable
+./kanban_go
+```
+
+The Go version provides the same functionality with a native cross-platform interface.
 
 ### Create sample data (optional)
 
