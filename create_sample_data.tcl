@@ -41,6 +41,11 @@ db eval {
     );
 }
 
+# Ensure 'attachment' column exists in cards table
+catch {
+    db eval {ALTER TABLE cards ADD COLUMN attachment BLOB}
+}
+
 # Create sample board
 db eval {
     INSERT INTO boards (name, description) VALUES 

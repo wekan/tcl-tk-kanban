@@ -4,6 +4,14 @@
 
 package require Tk
 package require sqlite3
+lappend auto_path /opt/local/lib/tcllib1.20
+if {[catch {package require xlsx} pkgVer]} {
+    # xlsx package not available; set flag and continue. Export will show install instructions.
+    set ::hasXlsx 0
+} else {
+    set ::hasXlsx 1
+    set ::xlsxVersion $pkgVer
+}
 
 # Global variables
 set ::currentBoard ""
@@ -81,6 +89,7 @@ proc initDatabase {} {
             description TEXT,
             position INTEGER DEFAULT 0,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            attachment BLOB,
             FOREIGN KEY (list_id) REFERENCES lists(id) ON DELETE CASCADE
         );
     }
@@ -272,8 +281,8 @@ proc createCard {listId title description} {
 
 proc getCards {listId} {
     set cards {}
-    db eval {SELECT id, title, description, position FROM cards WHERE list_id = $listId ORDER BY position} {
-        lappend cards [list $id $title $description $position]
+    db eval {SELECT id, title, description, position, attachment FROM cards WHERE list_id = $listId ORDER BY position} {
+        lappend cards [list $id $title $description $position $attachment]
     }
     return $cards
 }
@@ -451,7 +460,7 @@ proc moveListLeft {listId} {
     if {$currentPos > 0} {
         set newPos [expr {$currentPos - 1}]
         set swimlaneId [db eval {SELECT swimlane_id FROM lists WHERE id = $listId}]
-        set targetList [db eval {SELECT id FROM lists WHERE swimlane_id = $swimlaneId AND position = $newPos LIMIT 1}]
+        set targetList [db eval {SELECT id FROM lists WHERE swimlane_id = $boardId AND position = $newPos LIMIT 1}]
         if {$targetList ne ""} {
             db eval {
                 UPDATE lists SET position = $currentPos WHERE id = $targetList;
@@ -469,7 +478,7 @@ proc moveListRight {listId} {
     set maxPos [db eval {SELECT MAX(position) FROM lists WHERE swimlane_id = $swimlaneId}]
     if {$currentPos < $maxPos} {
         set newPos [expr {$currentPos + 1}]
-        set targetList [db eval {SELECT id FROM lists WHERE swimlane_id = $swimlaneId AND position = $newPos LIMIT 1}]
+        set targetList [db eval {SELECT id FROM lists WHERE swimlane_id = $boardId AND position = $newPos LIMIT 1}]
         if {$targetList ne ""} {
             db eval {
                 UPDATE lists SET position = $currentPos WHERE id = $targetList;
@@ -635,6 +644,11 @@ proc refreshBoards {} {
             -bg white -fg #0d47a1 -activebackground #e3f2fd -relief flat -width 4
         pack .sidebar.boardsframe.b$id.edit -side left -padx 2
         addTooltip .sidebar.boardsframe.b$id.edit "Edit board"
+
+        button .sidebar.boardsframe.b$id.export -text "Export" -command [list exportBoardToExcel $id] \
+            -bg white -fg #388e3c -activebackground #c8e6c9 -relief flat -width 6
+        pack .sidebar.boardsframe.b$id.export -side left -padx 2
+        addTooltip .sidebar.boardsframe.b$id.export "Export board to Excel (A4 multipage)"
 
         button .sidebar.boardsframe.b$id.clone -text "⎘" -command [list cloneBoard $id] \
             -bg white -fg #1976D2 -activebackground #e3f2fd -relief flat -width 2
@@ -1234,6 +1248,20 @@ proc saveCardFromDialog {cardId} {
 proc showCardDetails {cardId} {
     db eval {SELECT title, description, created_at FROM cards WHERE id = $cardId} {
         tk_messageBox -title "Card Details" -message "Title: $title\n\nDescription: $description\n\nCreated: $created_at" -type ok
+    }
+}
+
+# Remove Tcl xlsx export logic
+# New export handler will call Go binary
+proc exportBoardToExcel {boardId} {
+    set boardName [db eval {SELECT name FROM boards WHERE id = $boardId}]
+    set exportFile "board_${boardId}_export.xlsx"
+    # Call Go binary to export board
+    set cmd "./xlsx_exporter $boardId $exportFile"
+    if {[catch {exec $cmd} result]} {
+        tk_messageBox -title "Export Error" -message "Failed to export board to XLSX.\n\nError: $result\n\nMake sure xlsx_exporter is built and in the project directory." -type ok
+    } else {
+        tk_messageBox -message "Board exported to $exportFile (XLSX)." -type ok
     }
 }
 

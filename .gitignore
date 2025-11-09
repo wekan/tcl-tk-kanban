@@ -30,3 +30,12 @@ kanban.vfs/
 .vscode/
 .idea/
 *.iml
+
+# Generated Excel files
+*.xlsx
+
+# Generated Go executeable
+/xlsx_exporter
+/xlsx_exporter.exe
+
+

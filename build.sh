@@ -31,9 +31,10 @@ show_menu() {
     echo "3) Run .kit file (if built)"
     echo "4) Clean build artifacts"
     echo "5) Check dependencies"
+    echo "7) Build Go XLSX exporter"
     echo "6) Exit"
     echo ""
-    echo -n "Enter your choice [1-6]: "
+    echo -n "Enter your choice [1-7]: "
 }
 
 # Check if tclsh is available
@@ -204,6 +205,28 @@ clean_build() {
     echo -e "${GREEN}✓ Clean complete${NC}"
 }
 
+# Build Go XLSX exporter binary
+build_go_exporter() {
+    echo -e "${BLUE}Building Go XLSX exporter...${NC}"
+    if ! command -v go &> /dev/null; then
+        echo -e "${RED}Error: Go is not installed or not in PATH${NC}"
+        echo "Please install Go from https://golang.org/dl/"
+        return 1
+    fi
+    if [ ! -f "xlsx_exporter.go" ]; then
+        echo -e "${RED}Error: xlsx_exporter.go not found!${NC}"
+        return 1
+    fi
+    if [ ! -f "go.mod" ]; then
+        echo -e "${YELLOW}Initializing Go module...${NC}"
+        go mod init tcl-tk-kanban
+    fi
+    echo -e "${YELLOW}Ensuring Go dependencies...${NC}"
+    go get github.com/mattn/go-sqlite3
+    go get github.com/xuri/excelize/v2
+    go build -o xlsx_exporter xlsx_exporter.go && echo -e "${GREEN}✓ Successfully built xlsx_exporter${NC}"
+}
+
 # Main menu loop
 main() {
     show_banner
@@ -230,12 +253,15 @@ main() {
             5)
                 check_dependencies
                 ;;
+            7)
+                build_go_exporter
+                ;;
             6)
                 echo -e "${GREEN}Goodbye!${NC}"
                 exit 0
                 ;;
             *)
-                echo -e "${RED}Invalid option. Please choose 1-6.${NC}"
+                echo -e "${RED}Invalid option. Please choose 1-7.${NC}"
                 ;;
         esac
     done

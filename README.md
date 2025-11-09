@@ -33,24 +33,28 @@ The application provides:
 ## Installation
 
 ### macOS
-```bash
-brew install tcl-tk
-```
+- Install Tcl/Tk:
+  ```sh
+  brew install tcl-tk
+  ```
+- Install SQLite3 Tcl package (included with Homebrew Tcl/Tk)
 
 ### Ubuntu/Debian
-```bash
-sudo apt-get install tcl tk libsqlite3-tcl
-```
+- Install Tcl/Tk and SQLite3 Tcl package:
+  ```sh
+  sudo apt-get install tcl tk libsqlite3-tcl
+  ```
 
 ### OpenBSD
-```bash
-su
-pkg_add tcl tk sqlite3-tcl
-/usr/local/bin/wish8.6 kanban.tcl
-```
+- Install Tcl/Tk and SQLite3 Tcl package:
+  ```sh
+  su
+  pkg_add tcl tk sqlite3-tcl
+  /usr/local/bin/wish8.6 kanban.tcl
+  ```
 
 ### Other Systems
-Download from [https://www.tcl.tk/](https://www.tcl.tk/)
+Download Tcl/Tk from [https://www.tcl.tk/](https://www.tcl.tk/)
 
 ## Usage
 
