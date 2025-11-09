@@ -12,6 +12,42 @@ set ::currentSwimlane ""
 # Drag/drop UI icon hint
 set ::dragHandleIcon "⇕⇔"
 
+# Tooltip helper procedure
+proc addTooltip {widget text} {
+    if {$text eq ""} return
+    bind $widget <Enter> [list showTooltip %W $text %X %Y]
+    bind $widget <Leave> [list hideTooltip %W]
+    bind $widget <Motion> [list updateTooltip %W %X %Y]
+}
+
+proc showTooltip {widget text x y} {
+    set ::tooltip(afterid) [after 500 [list displayTooltip $widget $text $x $y]]
+}
+
+proc displayTooltip {widget text x y} {
+    if {![winfo exists $widget]} return
+    catch {destroy .tooltip}
+    toplevel .tooltip -bg black
+    wm overrideredirect .tooltip 1
+    label .tooltip.l -text $text -bg lightyellow -fg black -relief solid -borderwidth 1 -padx 3 -pady 1
+    pack .tooltip.l
+    wm geometry .tooltip +[expr {$x + 10}]+[expr {$y + 10}]
+}
+
+proc updateTooltip {widget x y} {
+    if {[winfo exists .tooltip]} {
+        wm geometry .tooltip +[expr {$x + 10}]+[expr {$y + 10}]
+    }
+}
+
+proc hideTooltip {widget} {
+    if {[info exists ::tooltip(afterid)]} {
+        after cancel $::tooltip(afterid)
+        unset ::tooltip(afterid)
+    }
+    catch {destroy .tooltip}
+}
+
 # Initialize database
 proc initDatabase {} {
     sqlite3 db wekan.db
@@ -405,10 +441,12 @@ proc refreshBoards {} {
         button .sidebar.boardsframe.b$id.btn -text $name -command [list selectBoard $id $name] \
             -bg white -activebackground #e0e0e0 -relief flat -anchor w
         pack .sidebar.boardsframe.b$id.btn -side left -fill x -expand 1
+        addTooltip .sidebar.boardsframe.b$id.btn "Select board: $name"
         
         button .sidebar.boardsframe.b$id.del -text "×" -command [list confirmDelete board $id] \
             -bg white -fg red -activebackground #ffcccc -relief flat -width 2
         pack .sidebar.boardsframe.b$id.del -side right
+        addTooltip .sidebar.boardsframe.b$id.del "Delete board"
     }
     
     # Add "New Board" button
@@ -416,6 +454,7 @@ proc refreshBoards {} {
         -bg #e8f5e9 -fg #2e7d32 -activebackground #c8e6c9 -activeforeground #1b5e20 \
         -relief raised -borderwidth 1 -highlightthickness 0 -font {-weight bold}
     pack .sidebar.boardsframe.new -fill x -pady 10
+    addTooltip .sidebar.boardsframe.new "Create a new board"
 }
 
 proc selectBoard {boardId boardName} {
@@ -441,6 +480,7 @@ proc refreshSwimlanes {boardId} {
         -activebackground #ff5252 -activeforeground white -relief raised \
         -borderwidth 1 -highlightthickness 0 -font {-weight bold}
     pack .content.canvas.frame.boardactions.delete -side left
+    addTooltip .content.canvas.frame.boardactions.delete "Delete this board"
     incr row
     
     foreach swimlane $swimlanes {
@@ -463,11 +503,13 @@ proc refreshSwimlanes {boardId} {
             -command [list moveSwimlaneUp $swimlaneId] -bg #e3f2fd -fg #1976D2 \
             -relief raised -borderwidth 1 -width 2 -font {-size 8}
         pack .content.canvas.frame.sw$swimlaneId.header.moveup -side left -padx 1
+        addTooltip .content.canvas.frame.sw$swimlaneId.header.moveup "Move swimlane up"
 
         button .content.canvas.frame.sw$swimlaneId.header.movedown -text "▼" \
             -command [list moveSwimlaneDown $swimlaneId] -bg #e3f2fd -fg #1976D2 \
             -relief raised -borderwidth 1 -width 2 -font {-size 8}
         pack .content.canvas.frame.sw$swimlaneId.header.movedown -side left -padx 1
+        addTooltip .content.canvas.frame.sw$swimlaneId.header.movedown "Move swimlane down"
 
         label .content.canvas.frame.sw$swimlaneId.header.dragicon -text "⇕" \
             -bg #2196F3 -fg white -font {-size 12 -weight bold}
@@ -479,12 +521,14 @@ proc refreshSwimlanes {boardId} {
             -borderwidth 1 -highlightthickness 0 -font {-weight bold}
         # Place "+ List" to the right of the swimlane move buttons (among left-packed controls)
         pack .content.canvas.frame.sw$swimlaneId.header.addlist -side left -padx 5
+        addTooltip .content.canvas.frame.sw$swimlaneId.header.addlist "Add a new list to this swimlane"
         
         button .content.canvas.frame.sw$swimlaneId.header.del -text "Delete" \
             -command [list confirmDelete swimlane $swimlaneId] -bg #ffebee -fg #c62828 \
             -activebackground #ff5252 -activeforeground white -relief raised \
             -borderwidth 1 -font {-weight bold}
         pack .content.canvas.frame.sw$swimlaneId.header.del -side right
+        addTooltip .content.canvas.frame.sw$swimlaneId.header.del "Delete this swimlane"
         
         # Lists container
         frame .content.canvas.frame.sw$swimlaneId.lists -bg #f5f5f5
@@ -517,17 +561,20 @@ proc refreshSwimlanes {boardId} {
                 -command [list confirmDelete list $listId] -bg #e0e0e0 -fg red \
                 -activebackground #ffcccc -relief flat -width 2
             pack .content.canvas.frame.sw$swimlaneId.lists.l$listId.header.del -side right -padx 1
+            addTooltip .content.canvas.frame.sw$swimlaneId.lists.l$listId.header.del "Delete this list"
 
             # Move list to below/above swimlane (between Delete and other controls)
             button .content.canvas.frame.sw$swimlaneId.lists.l$listId.header.movebelow -text "▼" \
                 -command [list moveListToBelowSwimlane $listId] -bg #f5f5f5 -fg #424242 \
                 -relief raised -borderwidth 1 -width 2 -font {-size 8}
             pack .content.canvas.frame.sw$swimlaneId.lists.l$listId.header.movebelow -side right -padx 1
+            addTooltip .content.canvas.frame.sw$swimlaneId.lists.l$listId.header.movebelow "Move list to below swimlane"
 
             button .content.canvas.frame.sw$swimlaneId.lists.l$listId.header.moveabove -text "▲" \
                 -command [list moveListToAboveSwimlane $listId] -bg #f5f5f5 -fg #424242 \
                 -relief raised -borderwidth 1 -width 2 -font {-size 8}
             pack .content.canvas.frame.sw$swimlaneId.lists.l$listId.header.moveabove -side right -padx 1
+            addTooltip .content.canvas.frame.sw$swimlaneId.lists.l$listId.header.moveabove "Move list to above swimlane"
 
             label .content.canvas.frame.sw$swimlaneId.lists.l$listId.header.dragicon -text "⇔" \
                 -bg #e0e0e0 -fg #757575 -font {-size 10 -weight bold}
@@ -537,11 +584,13 @@ proc refreshSwimlanes {boardId} {
                 -command [list moveListRight $listId] -bg #f5f5f5 -fg #424242 \
                 -relief raised -borderwidth 1 -width 2 -font {-size 8}
             pack .content.canvas.frame.sw$swimlaneId.lists.l$listId.header.moveright -side right -padx 1
+            addTooltip .content.canvas.frame.sw$swimlaneId.lists.l$listId.header.moveright "Move list to the right"
 
             button .content.canvas.frame.sw$swimlaneId.lists.l$listId.header.moveleft -text "◀" \
                 -command [list moveListLeft $listId] -bg #f5f5f5 -fg #424242 \
                 -relief raised -borderwidth 1 -width 2 -font {-size 8}
             pack .content.canvas.frame.sw$swimlaneId.lists.l$listId.header.moveleft -side right -padx 1
+            addTooltip .content.canvas.frame.sw$swimlaneId.lists.l$listId.header.moveleft "Move list to the left"
             
             # Cards container with scrollbar
             frame .content.canvas.frame.sw$swimlaneId.lists.l$listId.cardscontainer
@@ -594,12 +643,14 @@ proc refreshSwimlanes {boardId} {
                     -relief flat -font {-size 8} -width 2
                 pack .content.canvas.frame.sw$swimlaneId.lists.l$listId.cardscontainer.canvas.frame.c$cardId.dragframe.up \
                     -side right -padx 1
+                addTooltip .content.canvas.frame.sw$swimlaneId.lists.l$listId.cardscontainer.canvas.frame.c$cardId.dragframe.up "Move card up"
 
                 button .content.canvas.frame.sw$swimlaneId.lists.l$listId.cardscontainer.canvas.frame.c$cardId.dragframe.down \
                     -text "▼" -command [list moveCardDown $cardId] -bg #fafafa -fg #666666 \
                     -relief flat -font {-size 8} -width 2
                 pack .content.canvas.frame.sw$swimlaneId.lists.l$listId.cardscontainer.canvas.frame.c$cardId.dragframe.down \
                     -side right -padx 1
+                addTooltip .content.canvas.frame.sw$swimlaneId.lists.l$listId.cardscontainer.canvas.frame.c$cardId.dragframe.down "Move card down"
 
                 label .content.canvas.frame.sw$swimlaneId.lists.l$listId.cardscontainer.canvas.frame.c$cardId.title \
                     -text $cardTitle -bg #fafafa -font {-weight bold} -anchor w -wraplength 220
@@ -623,12 +674,14 @@ proc refreshSwimlanes {boardId} {
                     -bg #fafafa -relief flat -font {-size 8}
                 pack .content.canvas.frame.sw$swimlaneId.lists.l$listId.cardscontainer.canvas.frame.c$cardId.buttons.edit \
                     -side left -padx 2
+                addTooltip .content.canvas.frame.sw$swimlaneId.lists.l$listId.cardscontainer.canvas.frame.c$cardId.buttons.edit "Edit card"
                 
                 button .content.canvas.frame.sw$swimlaneId.lists.l$listId.cardscontainer.canvas.frame.c$cardId.buttons.del \
                     -text "Delete" -command [list confirmDelete card $cardId] -fg red \
                     -bg #fafafa -relief flat -font {-size 8}
                 pack .content.canvas.frame.sw$swimlaneId.lists.l$listId.cardscontainer.canvas.frame.c$cardId.buttons.del \
                     -side left -padx 2
+                addTooltip .content.canvas.frame.sw$swimlaneId.lists.l$listId.cardscontainer.canvas.frame.c$cardId.buttons.del "Delete card"
                 
                 bind .content.canvas.frame.sw$swimlaneId.lists.l$listId.cardscontainer.canvas.frame.c$cardId \
                     <Button-1> [list showCardDetails $cardId]
@@ -641,6 +694,7 @@ proc refreshSwimlanes {boardId} {
                 -relief raised -borderwidth 1 -highlightthickness 0 -font {-weight bold}
             pack .content.canvas.frame.sw$swimlaneId.lists.l$listId.cardscontainer.canvas.frame.addcard \
                 -fill x -padx 5 -pady 5
+            addTooltip .content.canvas.frame.sw$swimlaneId.lists.l$listId.cardscontainer.canvas.frame.addcard "Add a new card to this list"
             
             incr col
         }
@@ -654,6 +708,7 @@ proc refreshSwimlanes {boardId} {
         -bg #e8f5e9 -fg #2e7d32 -activebackground #c8e6c9 -activeforeground #1b5e20 \
         -relief raised -borderwidth 1 -highlightthickness 0 -font {-weight bold}
     grid .content.canvas.frame.addswimlane -row $row -column 0 -sticky ew -padx 5 -pady 10
+    addTooltip .content.canvas.frame.addswimlane "Add a new swimlane to this board"
     
     grid columnconfigure .content.canvas.frame 0 -weight 1
 }
