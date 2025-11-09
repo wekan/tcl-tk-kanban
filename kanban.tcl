@@ -263,6 +263,59 @@ proc moveCardDown {cardId} {
     }
 }
 
+# Move card to the list on the left (within the same swimlane)
+proc moveCardToLeftList {cardId} {
+    set currentListId [db eval {SELECT list_id FROM cards WHERE id = $cardId}]
+    set currentPos [db eval {SELECT position FROM cards WHERE id = $cardId}]
+    set swimlaneId [db eval {SELECT swimlane_id FROM lists WHERE id = $currentListId}]
+    set listPos [db eval {SELECT position FROM lists WHERE id = $currentListId}]
+    
+    if {$listPos <= 0} { return }
+    set targetListId [db eval {SELECT id FROM lists WHERE swimlane_id = $swimlaneId AND position = $listPos - 1 LIMIT 1}]
+    if {$targetListId eq ""} { return }
+    
+    # Compact positions in source list
+    db eval {
+        UPDATE cards SET position = position - 1
+        WHERE list_id = $currentListId AND position > $currentPos;
+    }
+    
+    # Append to end of target list
+    set targetPos [db eval {SELECT COALESCE(MAX(position), -1) FROM cards WHERE list_id = $targetListId}]
+    set newPos [expr {$targetPos + 1}]
+    db eval {UPDATE cards SET list_id = $targetListId, position = $newPos WHERE id = $cardId}
+    
+    set boardId [db eval {SELECT board_id FROM swimlanes WHERE id = $swimlaneId}]
+    refreshSwimlanes $boardId
+}
+
+# Move card to the list on the right (within the same swimlane)
+proc moveCardToRightList {cardId} {
+    set currentListId [db eval {SELECT list_id FROM cards WHERE id = $cardId}]
+    set currentPos [db eval {SELECT position FROM cards WHERE id = $cardId}]
+    set swimlaneId [db eval {SELECT swimlane_id FROM lists WHERE id = $currentListId}]
+    set listPos [db eval {SELECT position FROM lists WHERE id = $currentListId}]
+    set maxListPos [db eval {SELECT MAX(position) FROM lists WHERE swimlane_id = $swimlaneId}]
+    
+    if {$listPos >= $maxListPos} { return }
+    set targetListId [db eval {SELECT id FROM lists WHERE swimlane_id = $swimlaneId AND position = $listPos + 1 LIMIT 1}]
+    if {$targetListId eq ""} { return }
+    
+    # Compact positions in source list
+    db eval {
+        UPDATE cards SET position = position - 1
+        WHERE list_id = $currentListId AND position > $currentPos;
+    }
+    
+    # Append to end of target list
+    set targetPos [db eval {SELECT COALESCE(MAX(position), -1) FROM cards WHERE list_id = $targetListId}]
+    set newPos [expr {$targetPos + 1}]
+    db eval {UPDATE cards SET list_id = $targetListId, position = $newPos WHERE id = $cardId}
+    
+    set boardId [db eval {SELECT board_id FROM swimlanes WHERE id = $swimlaneId}]
+    refreshSwimlanes $boardId
+}
+
 # List left/right within its swimlane
 proc moveListLeft {listId} {
     set currentPos [db eval {SELECT position FROM lists WHERE id = $listId}]
@@ -635,6 +688,20 @@ proc refreshSwimlanes {boardId} {
                 pack .content.canvas.frame.sw$swimlaneId.lists.l$listId.cardscontainer.canvas.frame.c$cardId.dragframe.down \
                     -side right -padx 1
                 addTooltip .content.canvas.frame.sw$swimlaneId.lists.l$listId.cardscontainer.canvas.frame.c$cardId.dragframe.down "Move card down"
+
+                button .content.canvas.frame.sw$swimlaneId.lists.l$listId.cardscontainer.canvas.frame.c$cardId.dragframe.moveright \
+                    -text "▶" -command [list moveCardToRightList $cardId] -bg #fafafa -fg #666666 \
+                    -relief flat -font {-size 8} -width 2
+                pack .content.canvas.frame.sw$swimlaneId.lists.l$listId.cardscontainer.canvas.frame.c$cardId.dragframe.moveright \
+                    -side right -padx 1
+                addTooltip .content.canvas.frame.sw$swimlaneId.lists.l$listId.cardscontainer.canvas.frame.c$cardId.dragframe.moveright "Move card to list at right"
+
+                button .content.canvas.frame.sw$swimlaneId.lists.l$listId.cardscontainer.canvas.frame.c$cardId.dragframe.moveleft \
+                    -text "◀" -command [list moveCardToLeftList $cardId] -bg #fafafa -fg #666666 \
+                    -relief flat -font {-size 8} -width 2
+                pack .content.canvas.frame.sw$swimlaneId.lists.l$listId.cardscontainer.canvas.frame.c$cardId.dragframe.moveleft \
+                    -side right -padx 1
+                addTooltip .content.canvas.frame.sw$swimlaneId.lists.l$listId.cardscontainer.canvas.frame.c$cardId.dragframe.moveleft "Move card to list at left"
 
                 label .content.canvas.frame.sw$swimlaneId.lists.l$listId.cardscontainer.canvas.frame.c$cardId.title \
                     -text $cardTitle -bg #fafafa -font {-weight bold} -anchor w -wraplength 220
