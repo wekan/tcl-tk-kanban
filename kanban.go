@@ -185,12 +185,26 @@ func (d *DraggableList) Dropped(ev *fyne.DragEvent) {
 	}
 }
 
-// Update card positions in a list
-func updateCardPositions(listID int) {
-	cards := getCards(listID)
-	for i, card := range cards {
-		db.Exec("UPDATE cards SET position = ? WHERE id = ?", i, card.ID)
+// Draggable icon for triggering drag operations
+type DraggableIcon struct {
+	*widget.Button
+	Card   *DraggableCard
+	List   *DraggableList
+	SwimlaneID int // For swimlane dragging (if implemented)
+}
+
+func (d *DraggableIcon) Dragged(ev *fyne.DragEvent) {
+	if d.Card != nil {
+		draggedCard = d.Card
+	} else if d.List != nil {
+		draggedList = d.List
 	}
+	// Swimlane dragging not implemented yet
+}
+
+func (d *DraggableIcon) DragEnd() {
+	draggedCard = nil
+	draggedList = nil
 }
 
 // Update list positions in a swimlane
