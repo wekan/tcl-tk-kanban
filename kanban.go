@@ -3,14 +3,12 @@ package main
 import (
 	"database/sql"
 	"fmt"
-	"time"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/layout"
-	"fyne.io/fyne/v2/driver/desktop"
 	"fyne.io/fyne/v2/widget"
 	"github.com/xuri/excelize/v2"
 	_ "github.com/mattn/go-sqlite3"
@@ -244,88 +242,6 @@ func clearSelections() {
 }
 
 var boardContainer *fyne.Container
-var currentTooltip *widget.PopUp
-var tooltipTimer *time.Timer
-var hideTooltipTimer *time.Timer
-
-// Tooltip functions
-func showTooltip(mousePos fyne.Position, text string) {
-	// Cancel any pending hide
-	if hideTooltipTimer != nil {
-		hideTooltipTimer.Stop()
-		hideTooltipTimer = nil
-	}
-	
-	// If already showing a tooltip, update it immediately
-	if currentTooltip != nil {
-		currentTooltip.Hide()
-		currentTooltip = nil
-	}
-	
-	// Delay showing tooltip to prevent flashing
-	if tooltipTimer != nil {
-		tooltipTimer.Stop()
-	}
-	
-	tooltipTimer = time.AfterFunc(500*time.Millisecond, func() {
-		fyne.DoAndWait(func() {
-			label := widget.NewLabel(text)
-			label.Resize(fyne.NewSize(200, 30))
-			
-			currentTooltip = widget.NewPopUp(label, mainWindow.Canvas())
-			
-			// Position the tooltip near the mouse cursor
-			tooltipPos := fyne.NewPos(mousePos.X+10, mousePos.Y+10)
-			currentTooltip.Move(tooltipPos)
-			currentTooltip.Show()
-		})
-	})
-}
-
-func hideTooltip() {
-	// Cancel any pending show
-	if tooltipTimer != nil {
-		tooltipTimer.Stop()
-		tooltipTimer = nil
-	}
-	
-	// Delay hiding tooltip to prevent flashing when moving between button and tooltip
-	if hideTooltipTimer != nil {
-		hideTooltipTimer.Stop()
-	}
-	
-	hideTooltipTimer = time.AfterFunc(200*time.Millisecond, func() {
-		fyne.DoAndWait(func() {
-			if currentTooltip != nil {
-				currentTooltip.Hide()
-				currentTooltip = nil
-			}
-		})
-	})
-}
-
-// Custom button with tooltip support
-type TooltipButton struct {
-	widget.Button
-	tooltipText string
-}
-
-func (t *TooltipButton) MouseIn(ev *desktop.MouseEvent) {
-	showTooltip(ev.Position, t.tooltipText)
-}
-
-func (t *TooltipButton) MouseOut() {
-	hideTooltip()
-}
-
-func NewTooltipButton(text string, tooltip string, tapped func()) *TooltipButton {
-	btn := &TooltipButton{}
-	btn.ExtendBaseWidget(btn)
-	btn.SetText(text)
-	btn.OnTapped = tapped
-	btn.tooltipText = tooltip
-	return btn
-}
 
 // Draggable card widget
 type DraggableCard struct {
@@ -1615,11 +1531,11 @@ func createMainWindow(a fyne.App) fyne.Window {
 	boardContainer = container.NewVBox()
 	refreshBoardContainer()
 
-	addBoardBtn := NewTooltipButton("Add Board", "Create a new board", func() {
+	addBoardBtn := widget.NewButton("Add Board", func() {
 		showNewBoardDialog()
 	})
 
-	cloneBoardBtn := NewTooltipButton("Clone Board", "Clone current board", func() {
+	cloneBoardBtn := widget.NewButton("Clone Board", func() {
 		if currentBoardID > 0 {
 			cloneBoard(currentBoardID)
 			// Refresh board list - simplified
@@ -1631,7 +1547,7 @@ func createMainWindow(a fyne.App) fyne.Window {
 		}
 	})
 
-	deleteBoardBtn := NewTooltipButton("Delete Board", "Delete current board", func() {
+	deleteBoardBtn := widget.NewButton("Delete Board", func() {
 		if currentBoardID > 0 {
 			board := getBoardByID(currentBoardID)
 			if board != nil {
@@ -1655,13 +1571,13 @@ func createMainWindow(a fyne.App) fyne.Window {
 		}
 	})
 
-	editBoardBtn := NewTooltipButton("Edit Board", "Edit current board name and description", func() {
+	editBoardBtn := widget.NewButton("Edit Board", func() {
 		if currentBoardID > 0 {
 			showEditBoardDialog(currentBoardID)
 		}
 	})
 
-	exportBtn := NewTooltipButton("Export Board", "Export board to Excel (A4 multipage)", func() {
+	exportBtn := widget.NewButton("Export Board", func() {
 		if currentBoardID > 0 {
 			outputFile := fmt.Sprintf("board_%d_export.xlsx", currentBoardID)
 			err := exportBoardToXLSX(currentBoardID, outputFile)
@@ -1716,13 +1632,13 @@ func loadBoard(boardID int) {
 	}
 	
 	// Update toolbar with action buttons
-	upBtn := NewTooltipButton("▲", "Move selected up", moveSelectedUp)
-	downBtn := NewTooltipButton("▼", "Move selected down", moveSelectedDown)
-	leftBtn := NewTooltipButton("◀", "Move selected left", moveSelectedLeft)
-	rightBtn := NewTooltipButton("▶", "Move selected right", moveSelectedRight)
-	editBtn := NewTooltipButton("E", "Edit selected", editSelected)
-	cloneBtn := NewTooltipButton("C", "Clone selected", cloneSelected)
-	deleteBtn := NewTooltipButton("X", "Delete selected", deleteSelected)
+	upBtn := widget.NewButton("▲", moveSelectedUp)
+	downBtn := widget.NewButton("▼", moveSelectedDown)
+	leftBtn := widget.NewButton("◀", moveSelectedLeft)
+	rightBtn := widget.NewButton("▶", moveSelectedRight)
+	editBtn := widget.NewButton("Edit", editSelected)
+	cloneBtn := widget.NewButton("Clone", cloneSelected)
+	deleteBtn := widget.NewButton("Delete", deleteSelected)
 	clearBtn := widget.NewButton("Clear Selection", clearSelections)
 	
 	selectionInfo := widget.NewLabel(fmt.Sprintf("Selected: %d swimlanes, %d lists, %d cards", 
