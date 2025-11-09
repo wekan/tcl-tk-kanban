@@ -11,6 +11,37 @@ A full-featured Kanban board application built with Tcl/Tk that saves boards, sw
 - 💾 **SQLite Storage**: All data persists to `wekan.db` SQLite database
 - 🎨 **Clean GUI**: Intuitive Tcl/Tk interface with color-coded elements
 - 📦 **Portable**: Can be built as a standalone .kit file
+- 📊 **XLSX Export**: Export boards to Excel files with image attachments using Go and Excelize
+
+## XLSX Export
+
+The application supports exporting boards to XLSX format with image attachments.
+
+### Requirements for Export
+- **Go**: Version 1.16 or higher (for building exporters)
+- **Excelize**: Go library for Excel file manipulation
+
+### Building XLSX Exporters
+
+Use the build script to create the exporters:
+
+```bash
+./build.sh
+```
+
+Select option 4 to build the Go binary (`xlsx_exporter`), or option 5 to build the embedded .so library.
+
+### Export Process
+
+1. In the Kanban app, click the "Export" button next to a board in the sidebar
+2. The app will attempt to use the embedded .so library first (if available)
+3. If not, it falls back to the Go binary
+4. The exported XLSX file will be saved in the project directory as `board_<ID>_export.xlsx`
+
+The export includes:
+- Board, swimlane, and list hierarchy
+- Card titles, descriptions, and creation dates
+- Image attachments embedded in the Excel file
 
 ## Screenshot
 
@@ -29,6 +60,10 @@ The application provides:
 
 ### Optional (for building .kit files)
 - **sdx**: Starkit Developer eXtension
+
+### Optional (for XLSX export)
+- **Go**: Version 1.16 or higher
+- **Excelize**: Go library (automatically downloaded during build)
 
 ## Installation
 
@@ -71,12 +106,16 @@ Run the build script:
 ```
 
 You'll see a menu with options:
-1. **Run Kanban application** - Launch the app directly
-2. **Build TclKit .kit file** - Create standalone executable
-3. **Run .kit file** - Run the built .kit file
-4. **Clean build artifacts** - Remove build files
-5. **Check dependencies** - Verify all requirements are installed
-6. **Exit** - Exit the script
+1. **Check dependencies** - Verify all requirements are installed
+2. **Build TclKit** - Download latest TclKit and SDX for macOS
+3. **Build TclKit .kit file** - Create standalone .kit executable
+4. **Build Go XLSX exporter (binary)** - Compile Go binary for XLSX export
+5. **Build Go XLSX exporter as .so and embed in .kit** - Build and embed .so library
+6. **Build executable (macOS app bundle)** - Create standalone macOS app bundle
+7. **Run Kanban application** - Launch the app directly
+8. **Run .kit file** - Run the built .kit file
+9. **Clean build artifacts** - Remove build files
+10. **Exit** - Exit the script
 
 ### Running directly
 

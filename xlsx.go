@@ -1,26 +1,35 @@
-// xlsx_exporter_embed.go
-// Go shared library for embedding XLSX export into TclKit .kit file
-// Exports a C function for Tcl to call
-
 package main
 
-import "C"
 import (
 	"database/sql"
+	"fmt"
+	"os"
+	"strconv"
 
 	"github.com/xuri/excelize/v2"
 	_ "github.com/mattn/go-sqlite3"
 )
 
-//export ExportBoardToXLSX
-func ExportBoardToXLSX(boardId C.int, outputFile *C.char) C.int {
-	boardID := int(boardId)
-	outFile := C.GoString(outputFile)
+func main() {
+	if len(os.Args) != 3 {
+		fmt.Println("Usage: xlsx_exporter <boardId> <outputFile>")
+		os.Exit(1)
+	}
+
+	boardIdStr := os.Args[1]
+	outputFile := os.Args[2]
+
+	boardId, err := strconv.Atoi(boardIdStr)
+	if err != nil {
+		fmt.Printf("Invalid board ID: %v\n", err)
+		os.Exit(1)
+	}
 
 	// Open database
 	db, err := sql.Open("sqlite3", "wekan.db")
 	if err != nil {
-		return -1
+		fmt.Printf("Failed to open database: %v\n", err)
+		os.Exit(1)
 	}
 	defer db.Close()
 
@@ -30,13 +39,15 @@ func ExportBoardToXLSX(boardId C.int, outputFile *C.char) C.int {
 
 	streamWriter, err := f.NewStreamWriter("Sheet1")
 	if err != nil {
-		return -1
+		fmt.Printf("Failed to create stream writer: %v\n", err)
+		os.Exit(1)
 	}
 
 	// Write header
 	header := []interface{}{"Board", "Swimlane", "List", "Card Title", "Description", "Created At"}
 	if err := streamWriter.SetRow("A1", header); err != nil {
-		return -1
+		fmt.Printf("Failed to set header: %v\n", err)
+		os.Exit(1)
 	}
 
 	// Query data
@@ -49,9 +60,10 @@ func ExportBoardToXLSX(boardId C.int, outputFile *C.char) C.int {
 		JOIN cards c ON l.id = c.list_id
 		WHERE b.id = ?
 		ORDER BY s.position, l.position, c.position
-	`, boardID)
+	`, boardId)
 	if err != nil {
-		return -1
+		fmt.Printf("Failed to query data: %v\n", err)
+		os.Exit(1)
 	}
 	defer rows.Close()
 
@@ -61,16 +73,18 @@ func ExportBoardToXLSX(boardId C.int, outputFile *C.char) C.int {
 		var attachment []byte
 		err := rows.Scan(&boardName, &swimlaneName, &listName, &title, &description, &createdAt, &attachment)
 		if err != nil {
+			fmt.Printf("Failed to scan row: %v\n", err)
 			continue
 		}
 
 		row := []interface{}{boardName, swimlaneName, listName, title, description, createdAt}
 		cell, _ := excelize.CoordinatesToCellName(1, rowNum)
 		if err := streamWriter.SetRow(cell, row); err != nil {
+			fmt.Printf("Failed to set row: %v\n", err)
 			continue
 		}
 
-		// If attachment exists, add as image
+		// If attachment exists, add as image (simplified, assuming PNG)
 		if len(attachment) > 0 {
 			imageCell, _ := excelize.CoordinatesToCellName(7, rowNum)
 			f.AddPictureFromBytes("Sheet1", imageCell, &excelize.Picture{
@@ -83,15 +97,15 @@ func ExportBoardToXLSX(boardId C.int, outputFile *C.char) C.int {
 	}
 
 	if err := streamWriter.Flush(); err != nil {
-		return -1
+		fmt.Printf("Failed to flush stream: %v\n", err)
+		os.Exit(1)
 	}
 
 	// Save file
-	if err := f.SaveAs(outFile); err != nil {
-		return -1
+	if err := f.SaveAs(outputFile); err != nil {
+		fmt.Printf("Failed to save file: %v\n", err)
+		os.Exit(1)
 	}
 
-	return 0
+	fmt.Printf("Exported board %d to %s\n", boardId, outputFile)
 }
-
-func main() {}

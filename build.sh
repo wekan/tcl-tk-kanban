@@ -342,42 +342,26 @@ EOF
 
 # Build TclKit for macOS
 build_tclkit() {
-    echo -e "${BLUE}Building TclKit for macOS...${NC}"
+    echo -e "${BLUE}Downloading latest TclKit for macOS...${NC}"
     
-    mkdir -p build
-    cd build
-    
-    # Download kitgen if not present
-    if [ ! -f kitgen ]; then
-        echo "Downloading kitgen..."
-        curl -O http://kitgen.sourceforge.net/kitgen
-        chmod +x kitgen
+    # Download latest TclKit for macOS
+    if [ ! -f tclkit ]; then
+        echo "Downloading TclKit..."
+        curl -L -o tclkit https://www.equi4.com/pub/tk/tclkit-8.6.13-macosx10.6-x86_64
+        chmod +x tclkit
     fi
     
-    # Download Tcl source
-    if [ ! -f tcl8.6.13-src.tar.gz ]; then
-        echo "Downloading Tcl 8.6.13 source..."
-        curl -O https://prdownloads.sourceforge.net/tcl/tcl8.6.13-src.tar.gz
+    # Download SDX
+    if [ ! -f sdx.kit ]; then
+        echo "Downloading SDX..."
+        curl -L -o sdx.kit https://www.equi4.com/pub/sk/sdx-20110317.kit
     fi
     
-    # Download Tk source
-    if [ ! -f tk8.6.13-src.tar.gz ]; then
-        echo "Downloading Tk 8.6.13 source..."
-        curl -O https://prdownloads.sourceforge.net/tcl/tk8.6.13-src.tar.gz
-    fi
-    
-    # Build TclKit using kitgen
-    echo "Building TclKit with kitgen..."
-    ./kitgen tcl tcl8.6.13-src.tar.gz tk tk8.6.13-src.tar.gz
-    
-    if [ -f tclkit ]; then
-        cp tclkit ../
-        echo -e "${GREEN}✓ TclKit built and copied to project root${NC}"
-        cd ..
+    if [ -f tclkit ] && [ -f sdx.kit ]; then
+        echo -e "${GREEN}✓ TclKit and SDX downloaded${NC}"
         return 0
     else
-        echo -e "${RED}Error: TclKit build failed${NC}"
-        cd ..
+        echo -e "${RED}Error downloading TclKit or SDX${NC}"
         return 1
     fi
 }
