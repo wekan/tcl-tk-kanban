@@ -1259,18 +1259,25 @@ proc exportBoardToExcel {boardId} {
     set soPath [file join $scriptDir "xlsx_exporter_embed.so"]
     set binPath [file join $scriptDir "xlsx_exporter"]
     set exportFile [file join $scriptDir "board_${boardId}_export.xlsx"]
+    
+    # Try embedded .so first
+    set soLoaded 0
     if {[file exists $soPath]} {
-        if {[catch {load $soPath} loadErr]} {
-            tk_messageBox -title "Export Error" -message "Failed to load Go .so: $loadErr" -type ok
-            return
+        if {![catch {load $soPath} loadErr]} {
+            set soLoaded 1
         }
+    }
+    
+    if {$soLoaded} {
         set result [catch {ExportBoardToXLSX $boardId $exportFile} code]
         if {$result == 0} {
             tk_messageBox -message "Board exported to $exportFile (XLSX) via embedded Go .so." -type ok
-        } else {
-            tk_messageBox -title "Export Error" -message "Failed to export board to XLSX via Go .so.\n\nError code: $result" -type ok
+            return
         }
-    } elseif {[file exists $binPath]} {
+    }
+    
+    # Fallback to Go binary
+    if {[file exists $binPath]} {
         set result ""
         set code [catch {exec $binPath $boardId $exportFile} result]
         if {$code == 0} {
