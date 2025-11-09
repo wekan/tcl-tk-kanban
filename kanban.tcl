@@ -173,25 +173,27 @@ proc cloneSwimlane {swimlaneId} {
     set boardId [db eval {SELECT board_id FROM swimlanes WHERE id = $swimlaneId}]
     db eval {SELECT name, position FROM swimlanes WHERE id = $swimlaneId} {
         set origName $name
+        set origPos $position
     }
-    
-    # Find max position and add at end
-    set maxPos [db eval {SELECT COALESCE(MAX(position), -1) FROM swimlanes WHERE board_id = $boardId}]
-    set newPos [expr {$maxPos + 1}]
+
+    # Increment position of all swimlanes below the original
+    db eval {UPDATE swimlanes SET position = position + 1 WHERE board_id = $boardId AND position > $origPos}
+
+    set newPos [expr {$origPos + 1}]
     set newName "${origName} (Copy)"
-    
+
     db eval {INSERT INTO swimlanes (board_id, name, position) VALUES ($boardId, $newName, $newPos)}
     set newSwimlaneId [db last_insert_rowid]
-    
+
     # Clone all lists
     db eval {SELECT id, name, position FROM lists WHERE swimlane_id = $swimlaneId ORDER BY position} {
         set listId $id
         set listName $name
         set listPos $position
-        
+
         db eval {INSERT INTO lists (swimlane_id, name, position) VALUES ($newSwimlaneId, $listName, $listPos)}
         set newListId [db last_insert_rowid]
-        
+
         # Clone all cards in this list
         db eval {SELECT title, description, position FROM cards WHERE list_id = $listId ORDER BY position} {
             set cardTitle $title
@@ -200,7 +202,7 @@ proc cloneSwimlane {swimlaneId} {
             db eval {INSERT INTO cards (list_id, title, description, position) VALUES ($newListId, $cardTitle, $cardDesc, $cardPos)}
         }
     }
-    
+
     refreshSwimlanes $boardId
 }
 
