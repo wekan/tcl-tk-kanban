@@ -1494,7 +1494,9 @@ func loadBoard(boardID int) {
 			draggableList.Container.Add(listHeader)
 			
 			// Add cards
+			hasCards := false
 			for _, c := range cards {
+				hasCards = true
 				// Create a draggable card widget with move buttons
 				draggableCard := &DraggableCard{
 					CardID: c.ID,
@@ -1527,7 +1529,27 @@ func loadBoard(boardID int) {
 				draggableList.Container.Add(cardContainer)
 			}
 
+			// If no cards were added to this list, show "Add Card" button
+			if !hasCards {
+				addCardButton := widget.NewButton("Add Card", func() { showNewCardDialog(l.ID) })
+				addCardButton.Importance = widget.HighImportance
+				draggableList.Container.Add(container.NewVBox(
+					widget.NewLabel("This list has no cards yet."),
+					addCardButton,
+				))
+			}
+
 			listContainers[j] = draggableList.Container
+		}
+
+		// If no lists exist in this swimlane, show "Add List" button
+		if len(lists) == 0 {
+			addListButton := widget.NewButton("Add List", func() { showNewListDialog(s.ID) })
+			addListButton.Importance = widget.HighImportance
+			listContainers = []fyne.CanvasObject{container.NewVBox(
+				widget.NewLabel("This swimlane has no lists yet."),
+				addListButton,
+			)}
 		}
 
 		// Create droppable swimlane container
@@ -1539,6 +1561,18 @@ func loadBoard(boardID int) {
 		droppableSwimlane.Container.Add(container.NewHBox(listContainers...))
 		
 		swimlaneContainers[i] = droppableSwimlane.Container
+	}
+
+	// If no swimlanes exist, show "Add Swimlane" button
+	if len(swimlanes) == 0 {
+		addSwimlaneBtn := widget.NewButton("➕ Add Swimlane", func() {
+			showNewSwimlaneDialog(boardID)
+		})
+		addSwimlaneBtn.Importance = widget.HighImportance
+		swimlaneContainers = append(swimlaneContainers, container.NewVBox(
+			widget.NewLabel("This board is empty. Add your first swimlane to get started."),
+			addSwimlaneBtn,
+		))
 	}
 
 	mainArea.Add(container.NewVBox(swimlaneContainers...))
