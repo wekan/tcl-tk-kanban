@@ -8,6 +8,7 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/driver/desktop"
 	"fyne.io/fyne/v2/widget"
 	"github.com/xuri/excelize/v2"
@@ -1461,7 +1462,9 @@ func loadBoard(boardID int) {
 				func() { deleteSwimlane(s.ID); loadBoard(s.BoardID) },
 			)
 		})
-		swimlaneHeader := container.NewHBox(swimlaneLabel, swimlaneUpBtn, swimlaneDownBtn, addSwimlaneBtn, editSwimlaneBtn, cloneSwimlaneBtn, deleteSwimlaneBtn)
+		swimlaneDragIcon := NewTooltipButton("👋", "Drag to reorder swimlane", func() {})
+		swimlaneDragIcon.Resize(fyne.NewSize(30, 30))
+		swimlaneHeader := container.NewHBox(swimlaneLabel, swimlaneUpBtn, swimlaneDownBtn, addSwimlaneBtn, editSwimlaneBtn, cloneSwimlaneBtn, deleteSwimlaneBtn, swimlaneDragIcon)
 
 		lists := getLists(s.ID)
 		listContainers := make([]fyne.CanvasObject, len(lists))
@@ -1482,7 +1485,9 @@ func loadBoard(boardID int) {
 					func() { deleteList(l.ID); loadBoard(s.BoardID) },
 				)
 			})
-			listHeader := container.NewHBox(listLabel, listUpBtn, listDownBtn, listLeftBtn, listRightBtn, addListBtn, editListBtn, cloneListBtn, deleteListBtn)
+			listDragIcon := NewTooltipButton("👋", "Drag to reorder list", func() {})
+			listDragIcon.Resize(fyne.NewSize(30, 30))
+			listHeader := container.NewHBox(listLabel, listUpBtn, listDownBtn, listLeftBtn, listRightBtn, addListBtn, editListBtn, cloneListBtn, deleteListBtn, listDragIcon)
 
 			cards := getCards(l.ID)
 			
@@ -1504,6 +1509,23 @@ func loadBoard(boardID int) {
 					ListID: l.ID,
 					Card:   widget.NewCard("", c.Title, widget.NewLabel(c.Description)),
 				}
+				
+				// Add drag icon to card title area
+				cardDragIcon := NewTooltipButton("👋", "Drag to reorder card", func() {})
+				cardDragIcon.Resize(fyne.NewSize(25, 25))
+				
+				// Create custom card header with title and drag icon
+				cardTitleContainer := container.NewHBox(
+					widget.NewLabelWithStyle(c.Title, fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
+					layout.NewSpacer(),
+					cardDragIcon,
+				)
+				
+				// Recreate card with custom header
+				draggableCard.Card = widget.NewCard("", "", container.NewVBox(
+					cardTitleContainer,
+					widget.NewLabel(c.Description),
+				))
 				
 				// Add move and management buttons to the card
 				cardUpBtn := NewTooltipButton("▲", "Move card up", func() { moveCardUp(c.ID) })
