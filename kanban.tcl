@@ -9,9 +9,6 @@ package require sqlite3
 set ::currentBoard ""
 set ::currentSwimlane ""
 
-# Drag/drop UI icon hint
-set ::dragHandleIcon "⇕⇔"
-
 # Tooltip helper procedure
 proc addTooltip {widget text} {
     if {$text eq ""} return
@@ -511,10 +508,6 @@ proc refreshSwimlanes {boardId} {
         pack .content.canvas.frame.sw$swimlaneId.header.movedown -side left -padx 1
         addTooltip .content.canvas.frame.sw$swimlaneId.header.movedown "Move swimlane down"
 
-        label .content.canvas.frame.sw$swimlaneId.header.dragicon -text "⇕" \
-            -bg #2196F3 -fg white -font {-size 12 -weight bold}
-        pack .content.canvas.frame.sw$swimlaneId.header.dragicon -side left -padx 2
-        
         button .content.canvas.frame.sw$swimlaneId.header.addlist -text "+ List" \
             -command [list showNewListDialog $swimlaneId] -bg #e8f5e9 -fg #2e7d32 \
             -activebackground #c8e6c9 -activeforeground #1b5e20 -relief raised \
@@ -576,10 +569,6 @@ proc refreshSwimlanes {boardId} {
             pack .content.canvas.frame.sw$swimlaneId.lists.l$listId.header.moveabove -side right -padx 1
             addTooltip .content.canvas.frame.sw$swimlaneId.lists.l$listId.header.moveabove "Move list to above swimlane"
 
-            label .content.canvas.frame.sw$swimlaneId.lists.l$listId.header.dragicon -text "⇔" \
-                -bg #e0e0e0 -fg #757575 -font {-size 10 -weight bold}
-            pack .content.canvas.frame.sw$swimlaneId.lists.l$listId.header.dragicon -side right -padx 2
-
             button .content.canvas.frame.sw$swimlaneId.lists.l$listId.header.moveright -text "▶" \
                 -command [list moveListRight $listId] -bg #f5f5f5 -fg #424242 \
                 -relief raised -borderwidth 1 -width 2 -font {-size 8}
@@ -632,11 +621,6 @@ proc refreshSwimlanes {boardId} {
                     -bg #fafafa
                 pack .content.canvas.frame.sw$swimlaneId.lists.l$listId.cardscontainer.canvas.frame.c$cardId.dragframe \
                     -fill x -padx 2 -pady 2
-
-                label .content.canvas.frame.sw$swimlaneId.lists.l$listId.cardscontainer.canvas.frame.c$cardId.dragframe.icon \
-                    -text "⇕⇔" -bg #fafafa -fg #9e9e9e -font {-size 10}
-                pack .content.canvas.frame.sw$swimlaneId.lists.l$listId.cardscontainer.canvas.frame.c$cardId.dragframe.icon \
-                    -side right
 
                 button .content.canvas.frame.sw$swimlaneId.lists.l$listId.cardscontainer.canvas.frame.c$cardId.dragframe.up \
                     -text "▲" -command [list moveCardUp $cardId] -bg #fafafa -fg #666666 \
