@@ -1254,14 +1254,16 @@ proc showCardDetails {cardId} {
 # Remove Tcl xlsx export logic
 # New export handler will call Go binary
 proc exportBoardToExcel {boardId} {
-    set boardName [db eval {SELECT name FROM boards WHERE id = $boardId}]
-    set exportFile "board_${boardId}_export.xlsx"
-    # Call Go binary to export board
-    set cmd "./xlsx_exporter $boardId $exportFile"
-    if {[catch {exec $cmd} result]} {
-        tk_messageBox -title "Export Error" -message "Failed to export board to XLSX.\n\nError: $result\n\nMake sure xlsx_exporter is built and in the project directory." -type ok
-    } else {
+    # Get the directory of the current script (kanban.tcl)
+    set scriptDir [file dirname [info script]]
+    set exporterPath [file join $scriptDir xlsx_exporter]
+    set exportFile [file join $scriptDir "board_${boardId}_export.xlsx"]
+    set result ""
+    set code [catch {exec $exporterPath $boardId $exportFile} result]
+    if {$code == 0} {
         tk_messageBox -message "Board exported to $exportFile (XLSX)." -type ok
+    } else {
+        tk_messageBox -title "Export Error" -message "Failed to export board to XLSX.\n\nError: $result\n\nMake sure xlsx_exporter is built and in the project directory." -type ok
     }
 }
 
