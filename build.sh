@@ -38,9 +38,10 @@ show_menu() {
     echo "8) Run .kit file (if built)"
     echo "9) Clean build artifacts"
     echo "10) Build Go GUI executable"
-    echo "11) Exit"
+    echo "11) Run Go GUI executable"
+    echo "12) Exit"
     echo ""
-    echo -n "Enter your choice [1-11]: "
+    echo -n "Enter your choice [1-12]: "
 }
 
 # Check if tclsh is available
@@ -392,6 +393,20 @@ build_go_gui() {
     fi
 }
 
+# Run Go GUI executable
+run_go_gui() {
+    echo -e "${BLUE}Running Go GUI executable...${NC}"
+    
+    if [ ! -f "kanban_go" ]; then
+        echo -e "${RED}Error: kanban_go executable not found${NC}"
+        echo "Please build it first using option 10"
+        return 1
+    fi
+    
+    echo -e "${GREEN}Starting kanban_go...${NC}"
+    ./kanban_go
+}
+
 # --- Main Script ---
 
 show_banner
@@ -431,11 +446,14 @@ while true; do
             build_go_gui
             ;;
         11)
+            run_go_gui
+            ;;
+        12)
             echo -e "${GREEN}Exiting...${NC}"
             exit 0
             ;;
         *)
-            echo -e "${RED}Invalid option. Please choose 1-11.${NC}"
+            echo -e "${RED}Invalid option. Please choose 1-12.${NC}"
             ;;
     esac
     echo ""

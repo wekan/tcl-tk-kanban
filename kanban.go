@@ -53,11 +53,17 @@ var db *sql.DB
 var currentBoardID int
 var currentSwimlaneID int
 var mainArea *container.Scroll
+var toolbar *fyne.Container
 var mainWindow fyne.Window
 var draggedCard *DraggableCard
 var draggedList *DraggableList
 var draggedSwimlaneID int
 var draggingSwimlane bool
+
+// Selection tracking
+var selectedSwimlanes = make(map[int]bool)
+var selectedLists = make(map[int]bool)
+var selectedCards = make(map[int]bool)
 
 // Reorder helpers move an item to a target index and re-pack positions 0..n-1
 func reorderCards(listID int, cardID int, newIndex int) {
@@ -122,6 +128,121 @@ func reorderSwimlanes(boardID int, swimlaneID int, newIndex int) {
 		db.Exec("UPDATE swimlanes SET position = ? WHERE id = ?", i, id)
 	}
 }
+
+// Selection operations
+func moveSelectedUp() {
+	for id := range selectedCards {
+		moveCardUp(id)
+	}
+	for id := range selectedLists {
+		moveListToAboveSwimlane(id)
+	}
+	for id := range selectedSwimlanes {
+		moveSwimlaneUp(id)
+	}
+	loadBoard(currentBoardID)
+}
+
+func moveSelectedDown() {
+	for id := range selectedCards {
+		moveCardDown(id)
+	}
+	for id := range selectedLists {
+		moveListToBelowSwimlane(id)
+	}
+	for id := range selectedSwimlanes {
+		moveSwimlaneDown(id)
+	}
+	loadBoard(currentBoardID)
+}
+
+func moveSelectedLeft() {
+	for id := range selectedCards {
+		moveCardToLeftList(id)
+	}
+	for id := range selectedLists {
+		moveListLeft(id)
+	}
+	loadBoard(currentBoardID)
+}
+
+func moveSelectedRight() {
+	for id := range selectedCards {
+		moveCardToRightList(id)
+	}
+	for id := range selectedLists {
+		moveListRight(id)
+	}
+	loadBoard(currentBoardID)
+}
+
+func editSelected() {
+	for id := range selectedCards {
+		showEditCardDialog(id)
+		return // Edit one at a time
+	}
+	for id := range selectedLists {
+		showEditListDialog(id)
+		return
+	}
+	for id := range selectedSwimlanes {
+		showEditSwimlaneDialog(id)
+		return
+	}
+}
+
+func cloneSelected() {
+	for id := range selectedCards {
+		cloneCard(id)
+	}
+	for id := range selectedLists {
+		cloneList(id)
+	}
+	for id := range selectedSwimlanes {
+		cloneSwimlane(id)
+	}
+	loadBoard(currentBoardID)
+}
+
+func deleteSelected() {
+	// Build confirmation message
+	msg := "Are you sure you want to delete:\n"
+	if len(selectedCards) > 0 {
+		msg += fmt.Sprintf("- %d card(s)\n", len(selectedCards))
+	}
+	if len(selectedLists) > 0 {
+		msg += fmt.Sprintf("- %d list(s)\n", len(selectedLists))
+	}
+	if len(selectedSwimlanes) > 0 {
+		msg += fmt.Sprintf("- %d swimlane(s)\n", len(selectedSwimlanes))
+	}
+	msg += "\nThis action cannot be undone."
+	
+	showConfirmDialog("Delete Selected Items", msg, func() {
+		for id := range selectedCards {
+			deleteCard(id)
+		}
+		for id := range selectedLists {
+			deleteList(id)
+		}
+		for id := range selectedSwimlanes {
+			deleteSwimlane(id)
+		}
+		// Clear selections
+		selectedCards = make(map[int]bool)
+		selectedLists = make(map[int]bool)
+		selectedSwimlanes = make(map[int]bool)
+		loadBoard(currentBoardID)
+	})
+}
+
+func clearSelections() {
+	selectedCards = make(map[int]bool)
+	selectedLists = make(map[int]bool)
+	selectedSwimlanes = make(map[int]bool)
+	loadBoard(currentBoardID)
+}
+
 var boardContainer *fyne.Container
 var currentTooltip *widget.PopUp
 var tooltipTimer *time.Timer
@@ -1564,8 +1685,13 @@ func createMainWindow(a fyne.App) fyne.Window {
 
 	// Main area
 	mainArea = container.NewScroll(container.NewVBox())
+	
+	// Create toolbar (will be populated in loadBoard)
+	toolbar = container.NewVBox()
 
-	content := container.NewBorder(nil, nil, sidebar, nil, mainArea)
+	// Combine toolbar and main area with Border layout
+	mainContent := container.NewBorder(toolbar, nil, nil, nil, mainArea)
+	content := container.NewBorder(nil, nil, sidebar, nil, mainContent)
 	w.SetContent(content)
 
 	// Auto-select first board if available (after mainArea is initialized)
@@ -1589,51 +1715,67 @@ func loadBoard(boardID int) {
 		mainWindow.SetTitle("Go Kanban Board")
 	}
 	
+	// Update toolbar with action buttons
+	upBtn := NewTooltipButton("▲", "Move selected up", moveSelectedUp)
+	downBtn := NewTooltipButton("▼", "Move selected down", moveSelectedDown)
+	leftBtn := NewTooltipButton("◀", "Move selected left", moveSelectedLeft)
+	rightBtn := NewTooltipButton("▶", "Move selected right", moveSelectedRight)
+	editBtn := NewTooltipButton("E", "Edit selected", editSelected)
+	cloneBtn := NewTooltipButton("C", "Clone selected", cloneSelected)
+	deleteBtn := NewTooltipButton("X", "Delete selected", deleteSelected)
+	clearBtn := widget.NewButton("Clear Selection", clearSelections)
+	
+	selectionInfo := widget.NewLabel(fmt.Sprintf("Selected: %d swimlanes, %d lists, %d cards", 
+		len(selectedSwimlanes), len(selectedLists), len(selectedCards)))
+	
+	toolbar.Objects = []fyne.CanvasObject{
+		container.NewHBox(
+			upBtn, downBtn, leftBtn, rightBtn, editBtn, cloneBtn, deleteBtn, clearBtn,
+			layout.NewSpacer(),
+			selectionInfo,
+		),
+		widget.NewSeparator(),
+	}
+	toolbar.Refresh()
+	
 	// Clear and set new content
 	mainArea.Content = container.NewVBox()
 
 	swimlanes := getSwimlanes(boardID)
 	swimlaneContainers := make([]fyne.CanvasObject, len(swimlanes))
 	for i, s := range swimlanes {
-		// Swimlane header with move and management buttons
+		// Swimlane header with checkbox and drag handle only
 		swimlaneLabel := widget.NewLabel(s.Name)
-		swimlaneUpBtn := NewTooltipButton("▲", "Move swimlane up", func() { moveSwimlaneUp(s.ID) })
-		swimlaneDownBtn := NewTooltipButton("▼", "Move swimlane down", func() { moveSwimlaneDown(s.ID) })
-		addSwimlaneBtn := NewTooltipButton("+", "Add swimlane", func() { showNewSwimlaneDialog(s.BoardID) })
-		editSwimlaneBtn := NewTooltipButton("E", "Edit swimlane name", func() { showEditSwimlaneDialog(s.ID) })
-		cloneSwimlaneBtn := NewTooltipButton("C", "Clone swimlane", func() { cloneSwimlane(s.ID); loadBoard(s.BoardID) })
-		deleteSwimlaneBtn := NewTooltipButton("X", "Delete swimlane", func() { 
-			showConfirmDialog(
-				"Delete Swimlane", 
-				fmt.Sprintf("Are you sure you want to delete swimlane '%s'? This will also delete all lists and cards in this swimlane. This action cannot be undone.", s.Name),
-				func() { deleteSwimlane(s.ID); loadBoard(s.BoardID) },
-			)
+		swimlaneCheck := widget.NewCheck("", func(checked bool) {
+			if checked {
+				selectedSwimlanes[s.ID] = true
+			} else {
+				delete(selectedSwimlanes, s.ID)
+			}
+			loadBoard(boardID)
 		})
+		swimlaneCheck.Checked = selectedSwimlanes[s.ID]
+		
 		swimlaneDragHandle := &DraggableIcon{Button: widget.NewButton("👋", func() {}), SwimlaneID: s.ID}
 		swimlaneDragHandle.Resize(fyne.NewSize(30, 30))
-		swimlaneHeader := container.NewHBox(swimlaneLabel, swimlaneUpBtn, swimlaneDownBtn, addSwimlaneBtn, editSwimlaneBtn, cloneSwimlaneBtn, deleteSwimlaneBtn, swimlaneDragHandle)
+		swimlaneHeader := container.NewHBox(swimlaneCheck, swimlaneLabel, layout.NewSpacer(), swimlaneDragHandle)
 
 		lists := getLists(s.ID)
 		listRow := make([]fyne.CanvasObject, 0, len(lists)*2+1)
 		// leading list drop slot (index 0)
 		listRow = append(listRow, NewDropSlot("list", 0, s.ID, 0, 0))
 		for j, l := range lists {
-			// List header with move and management buttons
+			// List header with checkbox and drag handle only
 			listLabel := widget.NewLabel(l.Name)
-			listUpBtn := NewTooltipButton("▲", "Move list to above swimlane", func() { moveListToAboveSwimlane(l.ID) })
-			listDownBtn := NewTooltipButton("▼", "Move list to below swimlane", func() { moveListToBelowSwimlane(l.ID) })
-			listLeftBtn := NewTooltipButton("◀", "Move list to the left", func() { moveListLeft(l.ID) })
-			listRightBtn := NewTooltipButton("▶", "Move list to the right", func() { moveListRight(l.ID) })
-			addListBtn := NewTooltipButton("+", "Add list", func() { showNewListDialog(l.SwimlaneID) })
-			editListBtn := NewTooltipButton("E", "Edit list name", func() { showEditListDialog(l.ID) })
-			cloneListBtn := NewTooltipButton("C", "Clone list", func() { cloneList(l.ID); loadBoard(s.BoardID) })
-			deleteListBtn := NewTooltipButton("X", "Delete list", func() { 
-				showConfirmDialog(
-					"Delete List",
-					fmt.Sprintf("Are you sure you want to delete list '%s'? This will also delete all cards in this list. This action cannot be undone.", l.Name),
-					func() { deleteList(l.ID); loadBoard(s.BoardID) },
-				)
+			listCheck := widget.NewCheck("", func(checked bool) {
+				if checked {
+					selectedLists[l.ID] = true
+				} else {
+					delete(selectedLists, l.ID)
+				}
+				loadBoard(boardID)
 			})
+			listCheck.Checked = selectedLists[l.ID]
 
 			// Create draggable list container
 			draggableList := &DraggableList{
@@ -1644,7 +1786,7 @@ func loadBoard(boardID int) {
 			// Drag handle for list
 			listHandle := &DraggableIcon{Button: widget.NewButton("👋", func() {}), List: draggableList}
 			listHandle.Resize(fyne.NewSize(30, 30))
-			listHeader := container.NewHBox(listLabel, listUpBtn, listDownBtn, listLeftBtn, listRightBtn, addListBtn, editListBtn, cloneListBtn, deleteListBtn, listHandle)
+			listHeader := container.NewHBox(listCheck, listLabel, layout.NewSpacer(), listHandle)
 			draggableList.Container.Add(listHeader)
 
 			// Cards with drop slots
@@ -1658,10 +1800,23 @@ func loadBoard(boardID int) {
 					ListID: l.ID,
 					Card:   widget.NewCard("", c.Title, widget.NewLabel(c.Description)),
 				}
+				
+				// Checkbox for card selection
+				cardCheck := widget.NewCheck("", func(checked bool) {
+					if checked {
+						selectedCards[c.ID] = true
+					} else {
+						delete(selectedCards, c.ID)
+					}
+					loadBoard(boardID)
+				})
+				cardCheck.Checked = selectedCards[c.ID]
+				
 				// drag handle for card
 				cardHandle := &DraggableIcon{Button: widget.NewButton("👋", func() {}), Card: draggableCard}
 				cardHandle.Resize(fyne.NewSize(25, 25))
 				cardTitleContainer := container.NewHBox(
+					cardCheck,
 					widget.NewLabelWithStyle(c.Title, fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
 					layout.NewSpacer(),
 					cardHandle,
@@ -1671,26 +1826,8 @@ func loadBoard(boardID int) {
 					cardTitleContainer,
 					widget.NewLabel(c.Description),
 				))
-				// Buttons row
-				cardUpBtn := NewTooltipButton("▲", "Move card up", func() { moveCardUp(c.ID) })
-				cardDownBtn := NewTooltipButton("▼", "Move card down", func() { moveCardDown(c.ID) })
-				cardLeftBtn := NewTooltipButton("◀", "Move card to list at left", func() { moveCardToLeftList(c.ID) })
-				cardRightBtn := NewTooltipButton("▶", "Move card to list at right", func() { moveCardToRightList(c.ID) })
-				addCardBtn := NewTooltipButton("+", "Add card", func() { showNewCardDialog(c.ListID) })
-				editCardBtn := NewTooltipButton("E", "Edit card title and description", func() { showEditCardDialog(c.ID) })
-				cloneCardBtn := NewTooltipButton("C", "Clone card", func() { cloneCard(c.ID); loadBoard(s.BoardID) })
-				deleteCardBtn := NewTooltipButton("X", "Delete card", func() { 
-					showConfirmDialog(
-						"Delete Card",
-						fmt.Sprintf("Are you sure you want to delete card '%s'? This action cannot be undone.", c.Title),
-						func() { deleteCard(c.ID); loadBoard(s.BoardID) },
-					)
-				})
-				cardContainer := container.NewVBox(
-					container.NewHBox(cardUpBtn, cardDownBtn, cardLeftBtn, cardRightBtn, addCardBtn, editCardBtn, cloneCardBtn, deleteCardBtn),
-					draggableCard.Card,
-				)
-				cardObjs = append(cardObjs, cardContainer)
+				
+				cardObjs = append(cardObjs, draggableCard.Card)
 				cardObjs = append(cardObjs, NewDropSlot("card", 0, 0, l.ID, idx+1))
 			}
 			if len(cards) == 0 {
@@ -1746,6 +1883,7 @@ func loadBoard(boardID int) {
 		))
 	}
 
+	// Update main area content (swimlanes only, toolbar is separate)
 	mainArea.Content = container.NewVBox(swimlaneContainers...)
 	mainArea.Refresh()
 	
