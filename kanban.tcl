@@ -266,6 +266,45 @@ proc moveListRight {listId} {
     }
 }
 
+# Move list to the swimlane below (next swimlane by position) and append at end
+proc moveListToBelowSwimlane {listId} {
+    set srcSwimlaneId [db eval {SELECT swimlane_id FROM lists WHERE id = $listId}]
+    set srcPos [db eval {SELECT position FROM lists WHERE id = $listId}]
+    set boardId [db eval {SELECT board_id FROM swimlanes WHERE id = $srcSwimlaneId}]
+    set swPos [db eval {SELECT position FROM swimlanes WHERE id = $srcSwimlaneId}]
+    set nextSwimlaneId [db eval {SELECT id FROM swimlanes WHERE board_id = $boardId AND position = $swPos + 1 LIMIT 1}]
+    if {$nextSwimlaneId eq ""} { return }
+    # Compact positions in source swimlane after removing this list
+    db eval {
+        UPDATE lists SET position = position - 1
+        WHERE swimlane_id = $srcSwimlaneId AND position > $srcPos;
+    }
+    # Append to end of target swimlane
+    set targetPos [db eval {SELECT COALESCE(MAX(position), -1) FROM lists WHERE swimlane_id = $nextSwimlaneId}]
+    set newPos [expr {$targetPos + 1}]
+    db eval {UPDATE lists SET swimlane_id = $nextSwimlaneId, position = $newPos WHERE id = $listId}
+    refreshSwimlanes $boardId
+}
+
+# Move list to the swimlane above (previous swimlane by position) and append at end
+proc moveListToAboveSwimlane {listId} {
+    set srcSwimlaneId [db eval {SELECT swimlane_id FROM lists WHERE id = $listId}]
+    set srcPos [db eval {SELECT position FROM lists WHERE id = $listId}]
+    set boardId [db eval {SELECT board_id FROM swimlanes WHERE id = $srcSwimlaneId}]
+    set swPos [db eval {SELECT position FROM swimlanes WHERE id = $srcSwimlaneId}]
+    if {$swPos <= 0} { return }
+    set prevSwimlaneId [db eval {SELECT id FROM swimlanes WHERE board_id = $boardId AND position = $swPos - 1 LIMIT 1}]
+    if {$prevSwimlaneId eq ""} { return }
+    db eval {
+        UPDATE lists SET position = position - 1
+        WHERE swimlane_id = $srcSwimlaneId AND position > $srcPos;
+    }
+    set targetPos [db eval {SELECT COALESCE(MAX(position), -1) FROM lists WHERE swimlane_id = $prevSwimlaneId}]
+    set newPos [expr {$targetPos + 1}]
+    db eval {UPDATE lists SET swimlane_id = $prevSwimlaneId, position = $newPos WHERE id = $listId}
+    refreshSwimlanes $boardId
+}
+
 # Swimlane up/down on the board
 proc moveSwimlaneUp {swimlaneId} {
     set currentPos [db eval {SELECT position FROM swimlanes WHERE id = $swimlaneId}]
@@ -478,6 +517,17 @@ proc refreshSwimlanes {boardId} {
                 -command [list confirmDelete list $listId] -bg #e0e0e0 -fg red \
                 -activebackground #ffcccc -relief flat -width 2
             pack .content.canvas.frame.sw$swimlaneId.lists.l$listId.header.del -side right -padx 1
+
+            # Move list to below/above swimlane (between Delete and other controls)
+            button .content.canvas.frame.sw$swimlaneId.lists.l$listId.header.movebelow -text "▼" \
+                -command [list moveListToBelowSwimlane $listId] -bg #f5f5f5 -fg #424242 \
+                -relief raised -borderwidth 1 -width 2 -font {-size 8}
+            pack .content.canvas.frame.sw$swimlaneId.lists.l$listId.header.movebelow -side right -padx 1
+
+            button .content.canvas.frame.sw$swimlaneId.lists.l$listId.header.moveabove -text "▲" \
+                -command [list moveListToAboveSwimlane $listId] -bg #f5f5f5 -fg #424242 \
+                -relief raised -borderwidth 1 -width 2 -font {-size 8}
+            pack .content.canvas.frame.sw$swimlaneId.lists.l$listId.header.moveabove -side right -padx 1
 
             label .content.canvas.frame.sw$swimlaneId.lists.l$listId.header.dragicon -text "⇔" \
                 -bg #e0e0e0 -fg #757575 -font {-size 10 -weight bold}
