@@ -49,7 +49,7 @@ type Card struct {
 var db *sql.DB
 var currentBoardID int
 var currentSwimlaneID int
-var mainArea *fyne.Container
+var mainArea *container.Scroll
 var mainWindow fyne.Window
 var draggedCard *DraggableCard
 var draggedList *DraggableList
@@ -1415,9 +1415,9 @@ func createMainWindow(a fyne.App) fyne.Window {
 	)
 
 	// Main area
-	mainArea = container.NewVBox()
+	mainArea = container.NewScroll(container.NewVBox())
 
-	content := container.NewHBox(sidebar, mainArea)
+	content := container.NewBorder(nil, nil, sidebar, nil, mainArea)
 	w.SetContent(content)
 
 	// Auto-select first board if available (after mainArea is initialized)
@@ -1441,7 +1441,8 @@ func loadBoard(boardID int) {
 		mainWindow.SetTitle("Go Kanban Board")
 	}
 	
-	mainArea.RemoveAll()
+	// Clear and set new content
+	mainArea.Content = container.NewVBox()
 
 	swimlanes := getSwimlanes(boardID)
 	swimlaneContainers := make([]fyne.CanvasObject, len(swimlanes))
@@ -1575,7 +1576,7 @@ func loadBoard(boardID int) {
 		))
 	}
 
-	mainArea.Add(container.NewVBox(swimlaneContainers...))
+	mainArea.Content = container.NewVBox(swimlaneContainers...)
 	mainArea.Refresh()
 	
 	// Also refresh the window to ensure the layout updates
