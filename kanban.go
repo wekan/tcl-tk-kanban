@@ -27,6 +27,9 @@ type Swimlane struct {
 	BoardID int
 	Name    string
 	Position int
+	TextColor       string
+	BackgroundColor string
+	BackgroundImage string
 }
 
 type List struct {
@@ -34,6 +37,9 @@ type List struct {
 	SwimlaneID int
 	Name       string
 	Position   int
+	TextColor       string
+	BackgroundColor string
+	BackgroundImage string
 }
 
 type Card struct {
@@ -333,6 +339,57 @@ func exportSelected() {
 			fmt.Println("Exported to", outputFile)
 		}
 	}
+}
+
+func showColorDialog() {
+	textColorEntry := widget.NewEntry()
+	textColorEntry.SetPlaceHolder("#000000 or color name")
+	bgColorEntry := widget.NewEntry()
+	bgColorEntry.SetPlaceHolder("#FFFFFF or color name")
+	bgImageEntry := widget.NewEntry()
+	bgImageEntry.SetPlaceHolder("URL or file path")
+	
+	applyBtn := widget.NewButton("Apply", func() {})
+	cancelBtn := widget.NewButton("Cancel", func() {})
+	
+	content := container.NewVBox(
+		widget.NewLabel("Set Colors for Selected Items"),
+		widget.NewSeparator(),
+		widget.NewLabel("Text Color:"),
+		textColorEntry,
+		widget.NewLabel("Background Color:"),
+		bgColorEntry,
+		widget.NewLabel("Background Image:"),
+		bgImageEntry,
+		container.NewHBox(applyBtn, cancelBtn),
+	)
+	
+	dialog := widget.NewModalPopUp(content, mainWindow.Canvas())
+	
+	applyBtn.OnTapped = func() {
+		textColor := textColorEntry.Text
+		bgColor := bgColorEntry.Text
+		bgImage := bgImageEntry.Text
+		
+		// Apply to selected swimlanes
+		for id := range selectedSwimlanes {
+			db.Exec("UPDATE swimlanes SET text_color = ?, background_color = ?, background_image = ? WHERE id = ?",
+				textColor, bgColor, bgImage, id)
+		}
+		
+		// Apply to selected lists
+		for id := range selectedLists {
+			db.Exec("UPDATE lists SET text_color = ?, background_color = ?, background_image = ? WHERE id = ?",
+				textColor, bgColor, bgImage, id)
+		}
+		
+		dialog.Hide()
+		loadBoard(currentBoardID)
+	}
+	
+	cancelBtn.OnTapped = dialog.Hide
+	dialog.Resize(fyne.NewSize(400, 300))
+	dialog.Show()
 }
 
 var boardContainer *fyne.Container
@@ -773,6 +830,9 @@ func initDatabase() {
 			board_id INTEGER NOT NULL,
 			name TEXT NOT NULL,
 			position INTEGER DEFAULT 0,
+			text_color TEXT DEFAULT '',
+			background_color TEXT DEFAULT '',
+			background_image TEXT DEFAULT '',
 			FOREIGN KEY (board_id) REFERENCES boards(id) ON DELETE CASCADE
 		);
 		CREATE TABLE IF NOT EXISTS lists (
@@ -780,6 +840,9 @@ func initDatabase() {
 			swimlane_id INTEGER NOT NULL,
 			name TEXT NOT NULL,
 			position INTEGER DEFAULT 0,
+			text_color TEXT DEFAULT '',
+			background_color TEXT DEFAULT '',
+			background_image TEXT DEFAULT '',
 			FOREIGN KEY (swimlane_id) REFERENCES swimlanes(id) ON DELETE CASCADE
 		);
 		CREATE TABLE IF NOT EXISTS cards (
@@ -833,7 +896,7 @@ func createBoard(name, desc string) {
 }
 
 func getSwimlanes(boardID int) []Swimlane {
-	rows, err := db.Query("SELECT id, board_id, name, position FROM swimlanes WHERE board_id = ? ORDER BY position", boardID)
+	rows, err := db.Query("SELECT id, board_id, name, position, COALESCE(text_color, ''), COALESCE(background_color, ''), COALESCE(background_image, '') FROM swimlanes WHERE board_id = ? ORDER BY position", boardID)
 	if err != nil {
 		return nil
 	}
@@ -842,14 +905,14 @@ func getSwimlanes(boardID int) []Swimlane {
 	var swimlanes []Swimlane
 	for rows.Next() {
 		var s Swimlane
-		rows.Scan(&s.ID, &s.BoardID, &s.Name, &s.Position)
+		rows.Scan(&s.ID, &s.BoardID, &s.Name, &s.Position, &s.TextColor, &s.BackgroundColor, &s.BackgroundImage)
 		swimlanes = append(swimlanes, s)
 	}
 	return swimlanes
 }
 
 func getLists(swimlaneID int) []List {
-	rows, err := db.Query("SELECT id, swimlane_id, name, position FROM lists WHERE swimlane_id = ? ORDER BY position", swimlaneID)
+	rows, err := db.Query("SELECT id, swimlane_id, name, position, COALESCE(text_color, ''), COALESCE(background_color, ''), COALESCE(background_image, '') FROM lists WHERE swimlane_id = ? ORDER BY position", swimlaneID)
 	if err != nil {
 		return nil
 	}
@@ -858,7 +921,7 @@ func getLists(swimlaneID int) []List {
 	var lists []List
 	for rows.Next() {
 		var l List
-		rows.Scan(&l.ID, &l.SwimlaneID, &l.Name, &l.Position)
+		rows.Scan(&l.ID, &l.SwimlaneID, &l.Name, &l.Position, &l.TextColor, &l.BackgroundColor, &l.BackgroundImage)
 		lists = append(lists, l)
 	}
 	return lists
@@ -1690,6 +1753,7 @@ func loadBoard(boardID int) {
 	rightBtn := widget.NewButton("▶", moveSelectedRight)
 	newBtn := widget.NewButton("New", createNew)
 	editBtn := widget.NewButton("Edit", editSelected)
+	colorBtn := widget.NewButton("Color", showColorDialog)
 	cloneBtn := widget.NewButton("Clone", cloneSelected)
 	deleteBtn := widget.NewButton("Delete", deleteSelected)
 	clearBtn := widget.NewButton("Clear Selection", clearSelections)
@@ -1706,7 +1770,7 @@ func loadBoard(boardID int) {
 	
 	// Action buttons and info in right section
 	rightSection := container.NewVBox(
-		container.NewHBox(newBtn, editBtn, cloneBtn, deleteBtn, clearBtn, exportBtn),
+		container.NewHBox(newBtn, editBtn, colorBtn, cloneBtn, deleteBtn, clearBtn, exportBtn),
 		selectionInfo,
 	)
 	
@@ -1728,6 +1792,12 @@ func loadBoard(boardID int) {
 	for i, s := range swimlanes {
 		// Swimlane header with checkbox and drag handle only
 		swimlaneLabel := widget.NewLabel(s.Name)
+		
+		// Apply text color if set
+		if s.TextColor != "" {
+			swimlaneLabel = widget.NewLabelWithStyle(s.Name, fyne.TextAlignLeading, fyne.TextStyle{})
+		}
+		
 		swimlaneCheck := widget.NewCheck("", func(checked bool) {
 			if checked {
 				selectedSwimlanes[s.ID] = true
@@ -1740,7 +1810,21 @@ func loadBoard(boardID int) {
 		
 		swimlaneDragHandle := &DraggableIcon{Button: widget.NewButton("👋", func() {}), SwimlaneID: s.ID}
 		swimlaneDragHandle.Resize(fyne.NewSize(30, 30))
-		swimlaneHeader := container.NewHBox(swimlaneCheck, swimlaneLabel, layout.NewSpacer(), swimlaneDragHandle)
+		
+		swimlaneHeaderContent := container.NewHBox(swimlaneCheck, swimlaneLabel, layout.NewSpacer(), swimlaneDragHandle)
+		
+		// Create bordered header with background color
+		swimlaneHeaderBg := canvas.NewRectangle(color.NRGBA{240, 240, 240, 255})
+		if s.BackgroundColor != "" {
+			// Parse color - simple hex color parsing
+			if len(s.BackgroundColor) == 7 && s.BackgroundColor[0] == '#' {
+				var r, g, b uint8
+				fmt.Sscanf(s.BackgroundColor, "#%02x%02x%02x", &r, &g, &b)
+				swimlaneHeaderBg = canvas.NewRectangle(color.NRGBA{r, g, b, 255})
+			}
+		}
+		
+		swimlaneHeader := container.NewMax(swimlaneHeaderBg, container.NewPadded(swimlaneHeaderContent))
 
 		lists := getLists(s.ID)
 		listRow := make([]fyne.CanvasObject, 0, len(lists)*2+1)
@@ -1749,6 +1833,12 @@ func loadBoard(boardID int) {
 		for j, l := range lists {
 			// List header with checkbox and drag handle only
 			listLabel := widget.NewLabel(l.Name)
+			
+			// Apply text color if set
+			if l.TextColor != "" {
+				listLabel = widget.NewLabelWithStyle(l.Name, fyne.TextAlignLeading, fyne.TextStyle{})
+			}
+			
 			listCheck := widget.NewCheck("", func(checked bool) {
 				if checked {
 					selectedLists[l.ID] = true
@@ -1768,7 +1858,21 @@ func loadBoard(boardID int) {
 			// Drag handle for list
 			listHandle := &DraggableIcon{Button: widget.NewButton("👋", func() {}), List: draggableList}
 			listHandle.Resize(fyne.NewSize(30, 30))
-			listHeader := container.NewHBox(listCheck, listLabel, layout.NewSpacer(), listHandle)
+			
+			listHeaderContent := container.NewHBox(listCheck, listLabel, layout.NewSpacer(), listHandle)
+			
+			// Create bordered header with background color
+			listHeaderBg := canvas.NewRectangle(color.NRGBA{250, 250, 250, 255})
+			if l.BackgroundColor != "" {
+				// Parse color - simple hex color parsing
+				if len(l.BackgroundColor) == 7 && l.BackgroundColor[0] == '#' {
+					var r, g, b uint8
+					fmt.Sscanf(l.BackgroundColor, "#%02x%02x%02x", &r, &g, &b)
+					listHeaderBg = canvas.NewRectangle(color.NRGBA{r, g, b, 255})
+				}
+			}
+			
+			listHeader := container.NewMax(listHeaderBg, container.NewPadded(listHeaderContent))
 			draggableList.Container.Add(listHeader)
 
 			// Cards with drop slots
