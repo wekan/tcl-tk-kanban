@@ -53,6 +53,7 @@ var mainArea *fyne.Container
 var mainWindow fyne.Window
 var draggedCard *DraggableCard
 var draggedList *DraggableList
+var boardContainer *fyne.Container
 var currentTooltip *widget.PopUp
 var tooltipTimer *time.Timer
 var hideTooltipTimer *time.Timer
@@ -539,6 +540,7 @@ func createBoard(name, desc string) {
 	if err != nil {
 		fmt.Println("Error creating board:", err)
 	}
+	refreshBoardList()
 }
 
 func getSwimlanes(boardID int) []Swimlane {
@@ -595,6 +597,7 @@ func deleteBoard(boardID int) {
 	if err != nil {
 		fmt.Println("Error deleting board:", err)
 	}
+	refreshBoardList()
 }
 
 func cloneBoard(boardID int) {
@@ -627,6 +630,7 @@ func cloneBoard(boardID int) {
 	for _, s := range swimlanes {
 		cloneSwimlaneToBoard(s.ID, newBoardID)
 	}
+	refreshBoardList()
 }
 
 // Swimlane management functions
@@ -1022,6 +1026,7 @@ func updateBoard(boardID int, name, description string) {
 	if err != nil {
 		fmt.Println("Error updating board:", err)
 	}
+	refreshBoardList()
 }
 
 func updateSwimlane(swimlaneID int, name string) {
@@ -1199,6 +1204,34 @@ func showEditCardDialog(cardID int) {
 	dialog.Show()
 }
 
+// UI refresh functions
+func refreshBoardContainer() {
+	if boardContainer == nil {
+		return
+	}
+	
+	boardContainer.RemoveAll()
+	
+	boards := getBoards()
+	for _, board := range boards {
+		boardBtn := widget.NewButton(fmt.Sprintf("%d: %s", board.ID, board.Name), func(b Board) func() {
+			return func() {
+				currentBoardID = b.ID
+				loadBoard(currentBoardID)
+			}
+		}(board))
+		boardContainer.Add(boardBtn)
+	}
+	
+	if mainWindow != nil {
+		mainWindow.Content().Refresh()
+	}
+}
+
+func refreshBoardList() {
+	refreshBoardContainer()
+}
+
 // XLSX Export function (from xlsx_exporter.go)
 func exportBoardToXLSX(boardID int, outputFile string) error {
 	f := excelize.NewFile()
@@ -1272,23 +1305,8 @@ func createMainWindow(a fyne.App) fyne.Window {
 	mainWindow = w
 
 	// Sidebar
-	boardList := widget.NewList(
-		func() int {
-			return len(getBoards())
-		},
-		func() fyne.CanvasObject {
-			return widget.NewLabel("template")
-		},
-		func(id widget.ListItemID, obj fyne.CanvasObject) {
-			boards := getBoards()
-			obj.(*widget.Label).SetText(fmt.Sprintf("%d: %s", boards[id].ID, boards[id].Name))
-		},
-	)
-	boardList.OnSelected = func(id widget.ListItemID) {
-		boards := getBoards()
-		currentBoardID = boards[id].ID
-		loadBoard(currentBoardID)
-	}
+	boardContainer = container.NewVBox()
+	refreshBoardContainer()
 
 	addBoardBtn := NewTooltipButton("Add Board", "Create a new board", func() {
 		showNewBoardDialog()
@@ -1341,7 +1359,7 @@ func createMainWindow(a fyne.App) fyne.Window {
 
 	sidebar := container.NewVBox(
 		widget.NewLabel("Boards"),
-		boardList,
+		boardContainer,
 		addBoardBtn,
 		editBoardBtn,
 		cloneBoardBtn,
@@ -1358,7 +1376,8 @@ func createMainWindow(a fyne.App) fyne.Window {
 	// Auto-select first board if available (after mainArea is initialized)
 	boards := getBoards()
 	if len(boards) > 0 {
-		boardList.Select(0)
+		currentBoardID = boards[0].ID
+		loadBoard(currentBoardID)
 	}
 
 	return w
