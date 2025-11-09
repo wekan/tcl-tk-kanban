@@ -703,20 +703,20 @@ proc refreshSwimlanes {boardId} {
         pack .content.canvas.frame.sw$swimlaneId.header.addlist -side left -padx 5
         addTooltip .content.canvas.frame.sw$swimlaneId.header.addlist "Add a new list to this swimlane"
         
-        # Order: Clone (left), Delete (rightmost) among right-side buttons
-        button .content.canvas.frame.sw$swimlaneId.header.clone -text "⎘" \
-            -command [list cloneSwimlane $swimlaneId] -bg #e3f2fd -fg #1976D2 \
-            -activebackground #bbdefb -activeforeground #0d47a1 -relief raised \
-            -borderwidth 1 -width 2 -font {-weight bold}
-        pack .content.canvas.frame.sw$swimlaneId.header.clone -side right -padx 2
-        addTooltip .content.canvas.frame.sw$swimlaneId.header.clone "Clone this swimlane"
-
+        # Order: Clone (left), Delete (rightmost). With -side right, pack Delete first to place it at far right.
         button .content.canvas.frame.sw$swimlaneId.header.del -text "Delete" \
             -command [list confirmDelete swimlane $swimlaneId] -bg #ffebee -fg #c62828 \
             -activebackground #ff5252 -activeforeground white -relief raised \
             -borderwidth 1 -font {-weight bold}
         pack .content.canvas.frame.sw$swimlaneId.header.del -side right -padx 1
         addTooltip .content.canvas.frame.sw$swimlaneId.header.del "Delete this swimlane"
+        
+        button .content.canvas.frame.sw$swimlaneId.header.clone -text "⎘" \
+            -command [list cloneSwimlane $swimlaneId] -bg #e3f2fd -fg #1976D2 \
+            -activebackground #bbdefb -activeforeground #0d47a1 -relief raised \
+            -borderwidth 1 -width 2 -font {-weight bold}
+        pack .content.canvas.frame.sw$swimlaneId.header.clone -side right -padx 2
+        addTooltip .content.canvas.frame.sw$swimlaneId.header.clone "Clone this swimlane"
         
         # Lists container
         frame .content.canvas.frame.sw$swimlaneId.lists -bg #f5f5f5
