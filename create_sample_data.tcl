@@ -6,6 +6,41 @@ package require sqlite3
 # Initialize database
 sqlite3 db wekan.db
 
+# Create tables if they don't exist
+# Copied from kanban.tcl
+
+db eval {
+    CREATE TABLE IF NOT EXISTS boards (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        description TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE IF NOT EXISTS swimlanes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        board_id INTEGER NOT NULL,
+        name TEXT NOT NULL,
+        position INTEGER DEFAULT 0,
+        FOREIGN KEY (board_id) REFERENCES boards(id) ON DELETE CASCADE
+    );
+    CREATE TABLE IF NOT EXISTS lists (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        swimlane_id INTEGER NOT NULL,
+        name TEXT NOT NULL,
+        position INTEGER DEFAULT 0,
+        FOREIGN KEY (swimlane_id) REFERENCES swimlanes(id) ON DELETE CASCADE
+    );
+    CREATE TABLE IF NOT EXISTS cards (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        list_id INTEGER NOT NULL,
+        title TEXT NOT NULL,
+        description TEXT,
+        position INTEGER DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (list_id) REFERENCES lists(id) ON DELETE CASCADE
+    );
+}
+
 # Create sample board
 db eval {
     INSERT INTO boards (name, description) VALUES 
