@@ -587,20 +587,22 @@ proc createMainWindow {} {
     frame .content -bg white
     .paned add .content -weight 1
     
-    # Canvas with scrollbar for swimlanes
-    canvas .content.canvas -bg white -yscrollcommand ".content.scroll set"
+    # Canvas with vertical and horizontal scrollbars for swimlanes
+    canvas .content.canvas -bg white -yscrollcommand ".content.scroll set" -xscrollcommand ".content.xscroll set"
     scrollbar .content.scroll -command ".content.canvas yview"
-    
+    scrollbar .content.xscroll -orient horizontal -command ".content.canvas xview"
+
+    pack .content.xscroll -side top -fill x
     pack .content.scroll -side right -fill y
     pack .content.canvas -side left -fill both -expand 1
-    
+
     frame .content.canvas.frame -bg white
     .content.canvas create window 0 0 -anchor nw -window .content.canvas.frame
-    
+
     bind .content.canvas.frame <Configure> {
         .content.canvas configure -scrollregion [.content.canvas bbox all]
     }
-    
+
     refreshBoards
 }
 
