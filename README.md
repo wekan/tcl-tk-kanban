@@ -46,6 +46,7 @@ sudo apt-get install tcl tk libsqlite3-tcl
 ```bash
 su
 pkg_add tcl tk sqlite3-tcl
+/usr/local/bin/wish8.6 kanban.tcl
 ```
 
 ### Other Systems
