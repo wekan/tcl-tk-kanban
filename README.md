@@ -18,7 +18,7 @@ The application provides:
 - Sidebar with board navigation
 - Swimlanes for organizing work horizontally
 - Lists displayed in columns
-- Cards with drag-and-drop style organization
+- Cards with easy reordering via arrow controls (drag-and-drop style)
 - Full CRUD operations for all entities
 
 ## Requirements
@@ -126,6 +126,16 @@ The application uses SQLite with the following schema:
 5. **Edit Cards**: Click "Edit" button on any card
 6. **Delete Items**: Click the "×" button on boards, swimlanes, lists, or cards
 
+### Reordering (Drag/Drop style)
+
+You can quickly reorder items using arrow buttons:
+
+- Swimlanes: use ▲ and ▼ in the swimlane header to move up/down
+- Lists: use ◀ and ▶ in the list header to move left/right
+- Cards: use ▲ and ▼ on each card to move up/down within a list
+
+Note: Full mouse drag-and-drop is not implemented yet; these controls provide reliable, database-backed reordering.
+
 ## Building Standalone Executable
 
 To create a standalone .kit file:
@@ -214,7 +224,7 @@ This project is open source and available under the MIT License.
 ## Future Enhancements
 
 Potential features for future versions:
-- Drag-and-drop card movement
+- Mouse drag-and-drop for cards, lists, and swimlanes
 - Card colors and labels
 - Due dates and reminders
 - Card attachments

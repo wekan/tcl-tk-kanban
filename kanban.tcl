@@ -9,6 +9,9 @@ package require sqlite3
 set ::currentBoard ""
 set ::currentSwimlane ""
 
+# Drag/drop UI icon hint
+set ::dragHandleIcon "⇕⇔"
+
 # Initialize database
 proc initDatabase {} {
     sqlite3 db wekan.db
@@ -158,6 +161,121 @@ proc updateCard {cardId title description} {
     refreshSwimlanes $boardId
 }
 
+# --- Drag/Drop (reorder) movement functions ---
+# Card up/down within its list
+proc moveCardUp {cardId} {
+    set listId [db eval {SELECT list_id FROM cards WHERE id = $cardId}]
+    set currentPos [db eval {SELECT position FROM cards WHERE id = $cardId}]
+    if {$currentPos > 0} {
+        set newPos [expr {$currentPos - 1}]
+        set targetCard [db eval {SELECT id FROM cards WHERE list_id = $listId AND position = $newPos LIMIT 1}]
+        if {$targetCard ne ""} {
+            db eval {
+                UPDATE cards SET position = $currentPos WHERE id = $targetCard;
+                UPDATE cards SET position = $newPos WHERE id = $cardId;
+            }
+            set boardId [db eval {
+                SELECT s.board_id FROM swimlanes s 
+                JOIN lists l ON s.id = l.swimlane_id 
+                WHERE l.id = $listId
+            }]
+            refreshSwimlanes $boardId
+        }
+    }
+}
+
+proc moveCardDown {cardId} {
+    set listId [db eval {SELECT list_id FROM cards WHERE id = $cardId}]
+    set currentPos [db eval {SELECT position FROM cards WHERE id = $cardId}]
+    set maxPos [db eval {SELECT MAX(position) FROM cards WHERE list_id = $listId}]
+    if {$currentPos < $maxPos} {
+        set newPos [expr {$currentPos + 1}]
+        set targetCard [db eval {SELECT id FROM cards WHERE list_id = $listId AND position = $newPos LIMIT 1}]
+        if {$targetCard ne ""} {
+            db eval {
+                UPDATE cards SET position = $currentPos WHERE id = $targetCard;
+                UPDATE cards SET position = $newPos WHERE id = $cardId;
+            }
+            set boardId [db eval {
+                SELECT s.board_id FROM swimlanes s 
+                JOIN lists l ON s.id = l.swimlane_id 
+                WHERE l.id = $listId
+            }]
+            refreshSwimlanes $boardId
+        }
+    }
+}
+
+# List left/right within its swimlane
+proc moveListLeft {listId} {
+    set currentPos [db eval {SELECT position FROM lists WHERE id = $listId}]
+    if {$currentPos > 0} {
+        set newPos [expr {$currentPos - 1}]
+        set swimlaneId [db eval {SELECT swimlane_id FROM lists WHERE id = $listId}]
+        set targetList [db eval {SELECT id FROM lists WHERE swimlane_id = $swimlaneId AND position = $newPos LIMIT 1}]
+        if {$targetList ne ""} {
+            db eval {
+                UPDATE lists SET position = $currentPos WHERE id = $targetList;
+                UPDATE lists SET position = $newPos WHERE id = $listId;
+            }
+            set boardId [db eval {SELECT board_id FROM swimlanes WHERE id = $swimlaneId}]
+            refreshSwimlanes $boardId
+        }
+    }
+}
+
+proc moveListRight {listId} {
+    set swimlaneId [db eval {SELECT swimlane_id FROM lists WHERE id = $listId}]
+    set currentPos [db eval {SELECT position FROM lists WHERE id = $listId}]
+    set maxPos [db eval {SELECT MAX(position) FROM lists WHERE swimlane_id = $swimlaneId}]
+    if {$currentPos < $maxPos} {
+        set newPos [expr {$currentPos + 1}]
+        set targetList [db eval {SELECT id FROM lists WHERE swimlane_id = $swimlaneId AND position = $newPos LIMIT 1}]
+        if {$targetList ne ""} {
+            db eval {
+                UPDATE lists SET position = $currentPos WHERE id = $targetList;
+                UPDATE lists SET position = $newPos WHERE id = $listId;
+            }
+            set boardId [db eval {SELECT board_id FROM swimlanes WHERE id = $swimlaneId}]
+            refreshSwimlanes $boardId
+        }
+    }
+}
+
+# Swimlane up/down on the board
+proc moveSwimlaneUp {swimlaneId} {
+    set currentPos [db eval {SELECT position FROM swimlanes WHERE id = $swimlaneId}]
+    if {$currentPos > 0} {
+        set newPos [expr {$currentPos - 1}]
+        set boardId [db eval {SELECT board_id FROM swimlanes WHERE id = $swimlaneId}]
+        set targetSwimlane [db eval {SELECT id FROM swimlanes WHERE board_id = $boardId AND position = $newPos LIMIT 1}]
+        if {$targetSwimlane ne ""} {
+            db eval {
+                UPDATE swimlanes SET position = $currentPos WHERE id = $targetSwimlane;
+                UPDATE swimlanes SET position = $newPos WHERE id = $swimlaneId;
+            }
+            refreshSwimlanes $boardId
+        }
+    }
+}
+
+proc moveSwimlaneDown {swimlaneId} {
+    set boardId [db eval {SELECT board_id FROM swimlanes WHERE id = $swimlaneId}]
+    set currentPos [db eval {SELECT position FROM swimlanes WHERE id = $swimlaneId}]
+    set maxPos [db eval {SELECT MAX(position) FROM swimlanes WHERE board_id = $boardId}]
+    if {$currentPos < $maxPos} {
+        set newPos [expr {$currentPos + 1}]
+        set targetSwimlane [db eval {SELECT id FROM swimlanes WHERE board_id = $boardId AND position = $newPos LIMIT 1}]
+        if {$targetSwimlane ne ""} {
+            db eval {
+                UPDATE swimlanes SET position = $currentPos WHERE id = $targetSwimlane;
+                UPDATE swimlanes SET position = $newPos WHERE id = $swimlaneId;
+            }
+            refreshSwimlanes $boardId
+        }
+    }
+}
+
 # GUI Functions
 proc createMainWindow {} {
     wm title . "Tcl/Tk Kanban Board"
@@ -266,6 +384,21 @@ proc refreshSwimlanes {boardId} {
         label .content.canvas.frame.sw$swimlaneId.header.title -text $swimlaneName \
             -bg #2196F3 -fg white -font {-size 12 -weight bold} -anchor w
         pack .content.canvas.frame.sw$swimlaneId.header.title -side left -padx 10 -pady 5
+
+        # Drag handle and move buttons for swimlane
+        button .content.canvas.frame.sw$swimlaneId.header.moveup -text "▲" \
+            -command [list moveSwimlaneUp $swimlaneId] -bg #e3f2fd -fg #1976D2 \
+            -relief raised -borderwidth 1 -width 2 -font {-size 8}
+        pack .content.canvas.frame.sw$swimlaneId.header.moveup -side left -padx 1
+
+        button .content.canvas.frame.sw$swimlaneId.header.movedown -text "▼" \
+            -command [list moveSwimlaneDown $swimlaneId] -bg #e3f2fd -fg #1976D2 \
+            -relief raised -borderwidth 1 -width 2 -font {-size 8}
+        pack .content.canvas.frame.sw$swimlaneId.header.movedown -side left -padx 1
+
+        label .content.canvas.frame.sw$swimlaneId.header.dragicon -text "⇕" \
+            -bg #2196F3 -fg white -font {-size 12 -weight bold}
+        pack .content.canvas.frame.sw$swimlaneId.header.dragicon -side left -padx 2
         
         button .content.canvas.frame.sw$swimlaneId.header.addlist -text "+ List" \
             -command [list showNewListDialog $swimlaneId] -bg #e8f5e9 -fg #2e7d32 \
@@ -304,6 +437,21 @@ proc refreshSwimlanes {boardId} {
                 -text $listName -bg #e0e0e0 -font {-weight bold} -anchor w
             pack .content.canvas.frame.sw$swimlaneId.lists.l$listId.header.title \
                 -side left -padx 5 -pady 3
+
+            # Drag handle and move buttons for list
+            button .content.canvas.frame.sw$swimlaneId.lists.l$listId.header.moveleft -text "◀" \
+                -command [list moveListLeft $listId] -bg #f5f5f5 -fg #424242 \
+                -relief raised -borderwidth 1 -width 2 -font {-size 8}
+            pack .content.canvas.frame.sw$swimlaneId.lists.l$listId.header.moveleft -side right -padx 1
+
+            button .content.canvas.frame.sw$swimlaneId.lists.l$listId.header.moveright -text "▶" \
+                -command [list moveListRight $listId] -bg #f5f5f5 -fg #424242 \
+                -relief raised -borderwidth 1 -width 2 -font {-size 8}
+            pack .content.canvas.frame.sw$swimlaneId.lists.l$listId.header.moveright -side right -padx 1
+
+            label .content.canvas.frame.sw$swimlaneId.lists.l$listId.header.dragicon -text "⇔" \
+                -bg #e0e0e0 -fg #757575 -font {-size 10 -weight bold}
+            pack .content.canvas.frame.sw$swimlaneId.lists.l$listId.header.dragicon -side right -padx 2
             
             button .content.canvas.frame.sw$swimlaneId.lists.l$listId.header.del -text "×" \
                 -command [list deleteList $listId] -bg #e0e0e0 -fg red \
@@ -345,6 +493,29 @@ proc refreshSwimlanes {boardId} {
                 pack .content.canvas.frame.sw$swimlaneId.lists.l$listId.cardscontainer.canvas.frame.c$cardId \
                     -fill x -padx 5 -pady 3
                 
+                # Card drag handle frame (top-right)
+                frame .content.canvas.frame.sw$swimlaneId.lists.l$listId.cardscontainer.canvas.frame.c$cardId.dragframe \
+                    -bg #fafafa
+                pack .content.canvas.frame.sw$swimlaneId.lists.l$listId.cardscontainer.canvas.frame.c$cardId.dragframe \
+                    -fill x -padx 2 -pady 2
+
+                label .content.canvas.frame.sw$swimlaneId.lists.l$listId.cardscontainer.canvas.frame.c$cardId.dragframe.icon \
+                    -text "⇕⇔" -bg #fafafa -fg #9e9e9e -font {-size 10}
+                pack .content.canvas.frame.sw$swimlaneId.lists.l$listId.cardscontainer.canvas.frame.c$cardId.dragframe.icon \
+                    -side right
+
+                button .content.canvas.frame.sw$swimlaneId.lists.l$listId.cardscontainer.canvas.frame.c$cardId.dragframe.up \
+                    -text "▲" -command [list moveCardUp $cardId] -bg #fafafa -fg #666666 \
+                    -relief flat -font {-size 8} -width 2
+                pack .content.canvas.frame.sw$swimlaneId.lists.l$listId.cardscontainer.canvas.frame.c$cardId.dragframe.up \
+                    -side right -padx 1
+
+                button .content.canvas.frame.sw$swimlaneId.lists.l$listId.cardscontainer.canvas.frame.c$cardId.dragframe.down \
+                    -text "▼" -command [list moveCardDown $cardId] -bg #fafafa -fg #666666 \
+                    -relief flat -font {-size 8} -width 2
+                pack .content.canvas.frame.sw$swimlaneId.lists.l$listId.cardscontainer.canvas.frame.c$cardId.dragframe.down \
+                    -side right -padx 1
+
                 label .content.canvas.frame.sw$swimlaneId.lists.l$listId.cardscontainer.canvas.frame.c$cardId.title \
                     -text $cardTitle -bg #fafafa -font {-weight bold} -anchor w -wraplength 220
                 pack .content.canvas.frame.sw$swimlaneId.lists.l$listId.cardscontainer.canvas.frame.c$cardId.title \
