@@ -51,6 +51,8 @@ type Card struct {
 	Position    int
 	CreatedAt   string
 	Attachment  []byte
+	TextColor       string
+	BackgroundColor string
 }
 
 // Global variables
@@ -349,12 +351,112 @@ func exportSelected() {
 }
 
 func showColorDialog() {
-	textColorEntry := widget.NewEntry()
-	textColorEntry.SetPlaceHolder("#000000 or color name")
-	bgColorEntry := widget.NewEntry()
-	bgColorEntry.SetPlaceHolder("#FFFFFF or color name")
+	// Load existing colors from the first selected item
+	var existingTextColor, existingBgColor string
+	
+	// Try to get colors from selected items (priority: swimlanes > lists > cards)
+	for id := range selectedSwimlanes {
+		db.QueryRow("SELECT text_color, background_color FROM swimlanes WHERE id = ?", id).Scan(&existingTextColor, &existingBgColor)
+		break
+	}
+	if existingTextColor == "" && existingBgColor == "" {
+		for id := range selectedLists {
+			db.QueryRow("SELECT text_color, background_color FROM lists WHERE id = ?", id).Scan(&existingTextColor, &existingBgColor)
+			break
+		}
+	}
+	if existingTextColor == "" && existingBgColor == "" {
+		for id := range selectedCards {
+			db.QueryRow("SELECT text_color, background_color FROM cards WHERE id = ?", id).Scan(&existingTextColor, &existingBgColor)
+			break
+		}
+	}
+	
+	// Parse existing text color or use default black
+	var initTextR, initTextG, initTextB uint8 = 0, 0, 0
+	if existingTextColor != "" && len(existingTextColor) >= 7 && existingTextColor[0] == '#' {
+		fmt.Sscanf(existingTextColor, "#%02x%02x%02x", &initTextR, &initTextG, &initTextB)
+	}
+	
+	// Parse existing background color or use default white
+	var initBgR, initBgG, initBgB uint8 = 255, 255, 255
+	if existingBgColor != "" && len(existingBgColor) >= 7 && existingBgColor[0] == '#' {
+		fmt.Sscanf(existingBgColor, "#%02x%02x%02x", &initBgR, &initBgG, &initBgB)
+	}
+	
+	fmt.Printf("Loading existing colors: text=%s (RGB %d,%d,%d), bg=%s (RGB %d,%d,%d)\n", 
+		existingTextColor, initTextR, initTextG, initTextB, existingBgColor, initBgR, initBgG, initBgB)
+	
+	// Text color RGB sliders
+	textR := widget.NewSlider(0, 255)
+	textG := widget.NewSlider(0, 255)
+	textB := widget.NewSlider(0, 255)
+	textR.Value = float64(initTextR)
+	textG.Value = float64(initTextG)
+	textB.Value = float64(initTextB)
+	
+	// Preview for text color
+	textPreview := canvas.NewRectangle(color.NRGBA{initTextR, initTextG, initTextB, 255})
+	textPreview.SetMinSize(fyne.NewSize(100, 30))
+	textPreviewContainer := container.NewMax(textPreview)
+	
+	textRLabel := widget.NewLabel(fmt.Sprintf("R: %d", initTextR))
+	textGLabel := widget.NewLabel(fmt.Sprintf("G: %d", initTextG))
+	textBLabel := widget.NewLabel(fmt.Sprintf("B: %d", initTextB))
+	textHexLabel := widget.NewLabel(fmt.Sprintf("#%02X%02X%02X", initTextR, initTextG, initTextB))
+	
+	updateTextPreview := func() {
+		r := uint8(textR.Value)
+		g := uint8(textG.Value)
+		b := uint8(textB.Value)
+		textPreview.FillColor = color.NRGBA{r, g, b, 255}
+		textPreview.Refresh()
+		textRLabel.SetText(fmt.Sprintf("R: %d", r))
+		textGLabel.SetText(fmt.Sprintf("G: %d", g))
+		textBLabel.SetText(fmt.Sprintf("B: %d", b))
+		textHexLabel.SetText(fmt.Sprintf("#%02X%02X%02X", r, g, b))
+	}
+	
+	textR.OnChanged = func(float64) { updateTextPreview() }
+	textG.OnChanged = func(float64) { updateTextPreview() }
+	textB.OnChanged = func(float64) { updateTextPreview() }
+	
+	// Background color RGB sliders
+	bgR := widget.NewSlider(0, 255)
+	bgG := widget.NewSlider(0, 255)
+	bgB := widget.NewSlider(0, 255)
+	bgR.Value = float64(initBgR)
+	bgG.Value = float64(initBgG)
+	bgB.Value = float64(initBgB)
+	
+	// Preview for background color
+	bgPreview := canvas.NewRectangle(color.NRGBA{initBgR, initBgG, initBgB, 255})
+	bgPreview.SetMinSize(fyne.NewSize(100, 30))
+	bgPreviewContainer := container.NewMax(bgPreview)
+	
+	bgRLabel := widget.NewLabel(fmt.Sprintf("R: %d", initBgR))
+	bgGLabel := widget.NewLabel(fmt.Sprintf("G: %d", initBgG))
+	bgBLabel := widget.NewLabel(fmt.Sprintf("B: %d", initBgB))
+	bgHexLabel := widget.NewLabel(fmt.Sprintf("#%02X%02X%02X", initBgR, initBgG, initBgB))
+	
+	updateBgPreview := func() {
+		r := uint8(bgR.Value)
+		g := uint8(bgG.Value)
+		b := uint8(bgB.Value)
+		bgPreview.FillColor = color.NRGBA{r, g, b, 255}
+		bgPreview.Refresh()
+		bgRLabel.SetText(fmt.Sprintf("R: %d", r))
+		bgGLabel.SetText(fmt.Sprintf("G: %d", g))
+		bgBLabel.SetText(fmt.Sprintf("B: %d", b))
+		bgHexLabel.SetText(fmt.Sprintf("#%02X%02X%02X", r, g, b))
+	}
+	
+	bgR.OnChanged = func(float64) { updateBgPreview() }
+	bgG.OnChanged = func(float64) { updateBgPreview() }
+	bgB.OnChanged = func(float64) { updateBgPreview() }
+	
 	bgImageEntry := widget.NewEntry()
-	bgImageEntry.SetPlaceHolder("URL or file path")
+	bgImageEntry.SetPlaceHolder("URL or file path (optional)")
 	
 	applyBtn := widget.NewButton("Apply", func() {})
 	cancelBtn := widget.NewButton("Cancel", func() {})
@@ -362,40 +464,85 @@ func showColorDialog() {
 	content := container.NewVBox(
 		widget.NewLabel("Set Colors for Selected Items"),
 		widget.NewSeparator(),
+		
 		widget.NewLabel("Text Color:"),
-		textColorEntry,
+		container.NewHBox(textPreviewContainer, textHexLabel),
+		container.NewGridWithColumns(2, widget.NewLabel("Red:"), textRLabel),
+		textR,
+		container.NewGridWithColumns(2, widget.NewLabel("Green:"), textGLabel),
+		textG,
+		container.NewGridWithColumns(2, widget.NewLabel("Blue:"), textBLabel),
+		textB,
+		
+		widget.NewSeparator(),
 		widget.NewLabel("Background Color:"),
-		bgColorEntry,
+		container.NewHBox(bgPreviewContainer, bgHexLabel),
+		container.NewGridWithColumns(2, widget.NewLabel("Red:"), bgRLabel),
+		bgR,
+		container.NewGridWithColumns(2, widget.NewLabel("Green:"), bgGLabel),
+		bgG,
+		container.NewGridWithColumns(2, widget.NewLabel("Blue:"), bgBLabel),
+		bgB,
+		
+		widget.NewSeparator(),
 		widget.NewLabel("Background Image:"),
 		bgImageEntry,
+		
 		container.NewHBox(applyBtn, cancelBtn),
 	)
 	
 	dialog := widget.NewModalPopUp(content, mainWindow.Canvas())
 	
 	applyBtn.OnTapped = func() {
-		textColor := textColorEntry.Text
-		bgColor := bgColorEntry.Text
+		textColor := fmt.Sprintf("#%02X%02X%02X", uint8(textR.Value), uint8(textG.Value), uint8(textB.Value))
+		bgColor := fmt.Sprintf("#%02X%02X%02X", uint8(bgR.Value), uint8(bgG.Value), uint8(bgB.Value))
 		bgImage := bgImageEntry.Text
+		
+		fmt.Printf("Applying colors: text=%s, bg=%s, image=%s\n", textColor, bgColor, bgImage)
 		
 		// Apply to selected swimlanes
 		for id := range selectedSwimlanes {
-			db.Exec("UPDATE swimlanes SET text_color = ?, background_color = ?, background_image = ? WHERE id = ?",
+			result, err := db.Exec("UPDATE swimlanes SET text_color = ?, background_color = ?, background_image = ? WHERE id = ?",
 				textColor, bgColor, bgImage, id)
+			if err != nil {
+				fmt.Printf("Error updating swimlane %d: %v\n", id, err)
+			} else {
+				rows, _ := result.RowsAffected()
+				fmt.Printf("Updated swimlane %d (%d rows affected)\n", id, rows)
+			}
 		}
 		
 		// Apply to selected lists
 		for id := range selectedLists {
-			db.Exec("UPDATE lists SET text_color = ?, background_color = ?, background_image = ? WHERE id = ?",
+			result, err := db.Exec("UPDATE lists SET text_color = ?, background_color = ?, background_image = ? WHERE id = ?",
 				textColor, bgColor, bgImage, id)
+			if err != nil {
+				fmt.Printf("Error updating list %d: %v\n", id, err)
+			} else {
+				rows, _ := result.RowsAffected()
+				fmt.Printf("Updated list %d (%d rows affected)\n", id, rows)
+			}
+		}
+		
+		// Apply to selected cards
+		for id := range selectedCards {
+			result, err := db.Exec("UPDATE cards SET text_color = ?, background_color = ? WHERE id = ?",
+				textColor, bgColor, id)
+			if err != nil {
+				fmt.Printf("Error updating card %d: %v\n", id, err)
+			} else {
+				rows, _ := result.RowsAffected()
+				fmt.Printf("Updated card %d (%d rows affected)\n", id, rows)
+			}
 		}
 		
 		dialog.Hide()
+		fmt.Println("Reloading board after color change...")
 		loadBoard(currentBoardID)
 	}
 	
 	cancelBtn.OnTapped = dialog.Hide
-	dialog.Resize(fyne.NewSize(400, 300))
+	dialog.Resize(fyne.NewSize(500, 600))
 	dialog.Show()
 }
 
@@ -974,6 +1121,14 @@ func initDatabase() {
 		db.Exec("ALTER TABLE lists ADD COLUMN background_color TEXT DEFAULT ''")
 		db.Exec("ALTER TABLE lists ADD COLUMN background_image TEXT DEFAULT ''")
 	}
+	
+	// Check if cards has text_color column
+	db.QueryRow("SELECT COUNT(*) FROM pragma_table_info('cards') WHERE name='text_color'").Scan(&colCount)
+	if colCount == 0 {
+		// Add color columns to cards
+		db.Exec("ALTER TABLE cards ADD COLUMN text_color TEXT DEFAULT ''")
+		db.Exec("ALTER TABLE cards ADD COLUMN background_color TEXT DEFAULT ''")
+	}
 }
 
 func getBoardByID(boardID int) *Board {
@@ -1054,7 +1209,7 @@ func getLists(swimlaneID int) []List {
 }
 
 func getCards(listID int) []Card {
-	rows, err := db.Query("SELECT id, list_id, title, description, position, created_at, attachment FROM cards WHERE list_id = ? ORDER BY position", listID)
+	rows, err := db.Query("SELECT id, list_id, title, description, position, created_at, attachment, COALESCE(text_color, ''), COALESCE(background_color, '') FROM cards WHERE list_id = ? ORDER BY position", listID)
 	if err != nil {
 		return nil
 	}
@@ -1063,7 +1218,7 @@ func getCards(listID int) []Card {
 	var cards []Card
 	for rows.Next() {
 		var c Card
-		rows.Scan(&c.ID, &c.ListID, &c.Title, &c.Description, &c.Position, &c.CreatedAt, &c.Attachment)
+		rows.Scan(&c.ID, &c.ListID, &c.Title, &c.Description, &c.Position, &c.CreatedAt, &c.Attachment, &c.TextColor, &c.BackgroundColor)
 		cards = append(cards, c)
 	}
 	return cards
@@ -1922,11 +2077,23 @@ func loadBoard(boardID int) {
 	swimlaneContainers := make([]fyne.CanvasObject, len(swimlanes))
 	for i, s := range swimlanes {
 		// Swimlane header with checkbox and drag handle only
-		swimlaneLabel := widget.NewLabel(s.Name)
+		var swimlaneLabel fyne.CanvasObject = widget.NewLabel(s.Name)
 		
-		// Apply text color if set
-		if s.TextColor != "" {
-			swimlaneLabel = widget.NewLabelWithStyle(s.Name, fyne.TextAlignLeading, fyne.TextStyle{})
+		fmt.Printf("Swimlane %d: Name=%s, TextColor='%s', BgColor='%s'\n", s.ID, s.Name, s.TextColor, s.BackgroundColor)
+		
+		// Apply text color if set (hex format only for now)
+		if s.TextColor != "" && len(s.TextColor) >= 7 && s.TextColor[0] == '#' {
+			var r, g, b uint8
+			n, _ := fmt.Sscanf(s.TextColor, "#%02x%02x%02x", &r, &g, &b)
+			if n == 3 {
+				textColor := color.NRGBA{r, g, b, 255}
+				fmt.Printf("Applying text color RGB(%d, %d, %d) to swimlane %s\n", r, g, b, s.Name)
+				// Create label with colored text
+				textObj := canvas.NewText(s.Name, textColor)
+				textObj.TextSize = 14
+				textObj.TextStyle = fyne.TextStyle{Bold: true}
+				swimlaneLabel = textObj
+			}
 		}
 		
 		swimlaneCheck := widget.NewCheck("", func(checked bool) {
@@ -1945,11 +2112,11 @@ func loadBoard(boardID int) {
 		
 		// Create bordered header with background color
 		swimlaneHeaderBg := canvas.NewRectangle(color.NRGBA{240, 240, 240, 255})
-		if s.BackgroundColor != "" {
-			// Parse color - simple hex color parsing
-			if len(s.BackgroundColor) == 7 && s.BackgroundColor[0] == '#' {
-				var r, g, b uint8
-				fmt.Sscanf(s.BackgroundColor, "#%02x%02x%02x", &r, &g, &b)
+		if s.BackgroundColor != "" && len(s.BackgroundColor) >= 7 && s.BackgroundColor[0] == '#' {
+			// Parse hex color
+			var r, g, b uint8
+			n, _ := fmt.Sscanf(s.BackgroundColor, "#%02x%02x%02x", &r, &g, &b)
+			if n == 3 {
 				swimlaneHeaderBg = canvas.NewRectangle(color.NRGBA{r, g, b, 255})
 			}
 		}
@@ -1963,11 +2130,20 @@ func loadBoard(boardID int) {
 		listRow = append(listRow, NewDropSlot("list", 0, s.ID, 0, 0))
 		for j, l := range lists {
 			// List header with checkbox and drag handle only
-			listLabel := widget.NewLabel(l.Name)
+			var listLabel fyne.CanvasObject = widget.NewLabel(l.Name)
 			
-			// Apply text color if set
-			if l.TextColor != "" {
-				listLabel = widget.NewLabelWithStyle(l.Name, fyne.TextAlignLeading, fyne.TextStyle{})
+			// Apply text color if set (hex format only for now)
+			if l.TextColor != "" && len(l.TextColor) >= 7 && l.TextColor[0] == '#' {
+				var r, g, b uint8
+				n, _ := fmt.Sscanf(l.TextColor, "#%02x%02x%02x", &r, &g, &b)
+				if n == 3 {
+					textColor := color.NRGBA{r, g, b, 255}
+					// Create label with colored text
+					textObj := canvas.NewText(l.Name, textColor)
+					textObj.TextSize = 12
+					textObj.TextStyle = fyne.TextStyle{Bold: true}
+					listLabel = textObj
+				}
 			}
 			
 			listCheck := widget.NewCheck("", func(checked bool) {
@@ -1993,11 +2169,11 @@ func loadBoard(boardID int) {
 			
 			// Create bordered header with background color
 			listHeaderBg := canvas.NewRectangle(color.NRGBA{250, 250, 250, 255})
-			if l.BackgroundColor != "" {
-				// Parse color - simple hex color parsing
-				if len(l.BackgroundColor) == 7 && l.BackgroundColor[0] == '#' {
-					var r, g, b uint8
-					fmt.Sscanf(l.BackgroundColor, "#%02x%02x%02x", &r, &g, &b)
+			if l.BackgroundColor != "" && len(l.BackgroundColor) >= 7 && l.BackgroundColor[0] == '#' {
+				// Parse hex color
+				var r, g, b uint8
+				n, _ := fmt.Sscanf(l.BackgroundColor, "#%02x%02x%02x", &r, &g, &b)
+				if n == 3 {
 					listHeaderBg = canvas.NewRectangle(color.NRGBA{r, g, b, 255})
 				}
 			}
@@ -2028,21 +2204,57 @@ func loadBoard(boardID int) {
 				})
 				cardCheck.Checked = selectedCards[c.ID]
 				
-				// drag handle for card
-				cardHandle := NewDraggableIcon(draggableCard, nil, 0)
-				cardTitleContainer := container.NewHBox(
-					cardCheck,
-					widget.NewLabelWithStyle(c.Title, fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
-					layout.NewSpacer(),
-					cardHandle,
-				)
-				// Recreate card with custom header
-				draggableCard.Card = widget.NewCard("", "", container.NewVBox(
-					cardTitleContainer,
-					widget.NewLabel(c.Description),
-				))
-				
-				// Add the Card widget to make it visible
+			// drag handle for card
+			cardHandle := NewDraggableIcon(draggableCard, nil, 0)
+			
+			// Apply text color to title if set
+			var cardTitle fyne.CanvasObject = widget.NewLabelWithStyle(c.Title, fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
+			if c.TextColor != "" && len(c.TextColor) >= 7 && c.TextColor[0] == '#' {
+				var r, g, b uint8
+				n, _ := fmt.Sscanf(c.TextColor, "#%02x%02x%02x", &r, &g, &b)
+				if n == 3 {
+					textColor := color.NRGBA{r, g, b, 255}
+					textObj := canvas.NewText(c.Title, textColor)
+					textObj.TextSize = 12
+					textObj.TextStyle = fyne.TextStyle{Bold: true}
+					cardTitle = textObj
+				}
+			}
+			
+			// Apply text color to description if set
+			var cardDesc fyne.CanvasObject = widget.NewLabel(c.Description)
+			if c.TextColor != "" && len(c.TextColor) >= 7 && c.TextColor[0] == '#' {
+				var r, g, b uint8
+				n, _ := fmt.Sscanf(c.TextColor, "#%02x%02x%02x", &r, &g, &b)
+				if n == 3 {
+					textColor := color.NRGBA{r, g, b, 255}
+					descObj := canvas.NewText(c.Description, textColor)
+					descObj.TextSize = 10
+					cardDesc = descObj
+				}
+			}
+			
+			cardTitleContainer := container.NewHBox(
+				cardCheck,
+				cardTitle,
+				layout.NewSpacer(),
+				cardHandle,
+			)
+			
+			// Create card content with background color if set
+			cardContent := container.NewVBox(cardTitleContainer, cardDesc)
+			
+			if c.BackgroundColor != "" && len(c.BackgroundColor) >= 7 && c.BackgroundColor[0] == '#' {
+				var r, g, b uint8
+				n, _ := fmt.Sscanf(c.BackgroundColor, "#%02x%02x%02x", &r, &g, &b)
+				if n == 3 {
+					cardBg := canvas.NewRectangle(color.NRGBA{r, g, b, 255})
+					cardContent = container.NewStack(cardBg, container.NewPadded(cardContent))
+				}
+			}
+			
+			// Recreate card with custom header
+			draggableCard.Card = widget.NewCard("", "", cardContent)				// Add the Card widget to make it visible
 				cardObjs = append(cardObjs, draggableCard.Card)
 				cardObjs = append(cardObjs, NewDropSlot("card", 0, 0, l.ID, idx+1))
 			}
