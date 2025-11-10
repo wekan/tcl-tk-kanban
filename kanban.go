@@ -71,6 +71,12 @@ var selectedLists = make(map[int]bool)
 var selectedCards = make(map[int]bool)
 var boardsCheckboxChecked bool
 
+// Drag visual feedback
+var dragOverlay *fyne.Container
+var dragPreview *canvas.Rectangle
+var currentDropSlot *DropSlot
+var draggedItemName string
+
 // Reorder helpers move an item to a target index and re-pack positions 0..n-1
 func reorderCards(listID int, cardID int, newIndex int) {
 	cards := getCards(listID)
@@ -443,28 +449,90 @@ func (d *DraggableList) Dropped(ev *fyne.DragEvent) {
 
 // Draggable icon for triggering drag operations
 type DraggableIcon struct {
-	*widget.Button
-	Card   *DraggableCard
-	List   *DraggableList
+	widget.BaseWidget
+	Card       *DraggableCard
+	List       *DraggableList
 	SwimlaneID int // For swimlane dragging (if implemented)
+	text       *canvas.Text
+	rect       *canvas.Rectangle
+}
+
+func NewDraggableIcon(card *DraggableCard, list *DraggableList, swimlaneID int) *DraggableIcon {
+	icon := &DraggableIcon{
+		Card:       card,
+		List:       list,
+		SwimlaneID: swimlaneID,
+	}
+	icon.ExtendBaseWidget(icon)
+	return icon
+}
+
+func (d *DraggableIcon) CreateRenderer() fyne.WidgetRenderer {
+	d.rect = canvas.NewRectangle(color.NRGBA{200, 200, 200, 255})
+	d.text = canvas.NewText("👋", color.Black)
+	d.text.TextSize = 16
+	d.text.Alignment = fyne.TextAlignCenter
+	
+	return widget.NewSimpleRenderer(container.NewMax(d.rect, d.text))
+}
+
+func (d *DraggableIcon) MinSize() fyne.Size {
+	return fyne.NewSize(30, 30)
 }
 
 func (d *DraggableIcon) Dragged(ev *fyne.DragEvent) {
 	if d.Card != nil {
 		draggedCard = d.Card
+		// Get card title for preview
+		var title string
+		db.QueryRow("SELECT title FROM cards WHERE id = ?", d.Card.CardID).Scan(&title)
+		draggedItemName = title
 	} else if d.List != nil {
 		draggedList = d.List
+		// Get list name for preview
+		var name string
+		db.QueryRow("SELECT name FROM lists WHERE id = ?", d.List.ListID).Scan(&name)
+		draggedItemName = name
 	} else if d.SwimlaneID != 0 {
 		draggingSwimlane = true
 		draggedSwimlaneID = d.SwimlaneID
+		// Get swimlane name for preview
+		var name string
+		db.QueryRow("SELECT name FROM swimlanes WHERE id = ?", d.SwimlaneID).Scan(&name)
+		draggedItemName = name
 	}
-	// Swimlane dragging not implemented yet
+	
+	// Create or update drag preview overlay
+	if dragOverlay == nil && mainWindow != nil {
+		dragPreview = canvas.NewRectangle(color.NRGBA{100, 100, 255, 200})
+		dragPreview.SetMinSize(fyne.NewSize(200, 60))
+		previewLabel := widget.NewLabelWithStyle(draggedItemName, fyne.TextAlignCenter, fyne.TextStyle{Bold: true})
+		dragOverlay = container.NewWithoutLayout(dragPreview, previewLabel)
+	}
+	
+	// Update preview position to follow cursor
+	if dragOverlay != nil {
+		dragPreview.Move(fyne.NewPos(ev.Position.X+10, ev.Position.Y+10))
+		dragPreview.Resize(fyne.NewSize(200, 60))
+	}
 }
 
 func (d *DraggableIcon) DragEnd() {
 	draggedCard = nil
 	draggedList = nil
 	draggingSwimlane = false
+	draggedItemName = ""
+	
+	// Clean up drag overlay
+	if dragOverlay != nil {
+		dragOverlay = nil
+		dragPreview = nil
+	}
+	
+	// Reset any highlighted drop slots
+	if currentDropSlot != nil {
+		currentDropSlot.DragEnd()
+	}
 }
 
 // Generic drop slot that can accept cards, lists, or swimlanes and place them at a target index
@@ -475,13 +543,38 @@ type DropSlot struct {
 	SwimlaneID int    // for list reordering context
 	BoardID    int    // for swimlane reordering context
 	Index      int    // target index where the dragged item should be inserted
+	rect       *canvas.Rectangle
+	isActive   bool
 }
 
-func (d *DropSlot) Dragged(ev *fyne.DragEvent) {}
+func (d *DropSlot) Dragged(ev *fyne.DragEvent) {
+	// Highlight this drop slot when dragging over it
+	if !d.isActive {
+		d.isActive = true
+		currentDropSlot = d
+		// Change to bright highlight color
+		d.rect.FillColor = color.NRGBA{0, 200, 255, 180}
+		d.rect.Refresh()
+		// Expand the slot to show more space
+		d.rect.SetMinSize(fyne.NewSize(100, 40))
+	}
+}
 
-func (d *DropSlot) DragEnd() {}
+func (d *DropSlot) DragEnd() {
+	// Reset to default appearance
+	d.isActive = false
+	if currentDropSlot == d {
+		currentDropSlot = nil
+	}
+	d.rect.FillColor = color.NRGBA{0, 120, 255, 40}
+	d.rect.SetMinSize(fyne.NewSize(16, 16))
+	d.rect.Refresh()
+}
 
 func (d *DropSlot) Dropped(ev *fyne.DragEvent) {
+	// Reset drop slot appearance
+	d.DragEnd()
+	
 	switch d.Kind {
 	case "card":
 		if draggedCard != nil && draggedCard.ListID == d.ListID {
@@ -506,7 +599,7 @@ func (d *DropSlot) Dropped(ev *fyne.DragEvent) {
 }
 
 func NewDropSlot(kind string, boardID, swimlaneID, listID, index int) *DropSlot {
-	rect := canvas.NewRectangle(color.NRGBA{0, 120, 255, 80})
+	rect := canvas.NewRectangle(color.NRGBA{0, 120, 255, 40})
 	rect.SetMinSize(fyne.NewSize(16, 16))
 	c := container.NewMax(rect)
 	slot := &DropSlot{
@@ -516,6 +609,8 @@ func NewDropSlot(kind string, boardID, swimlaneID, listID, index int) *DropSlot 
 		SwimlaneID: swimlaneID,
 		ListID: listID,
 		Index: index,
+		rect: rect,
+		isActive: false,
 	}
 	return slot
 }
@@ -1827,17 +1922,14 @@ func loadBoard(boardID int) {
 				selectedSwimlanes[s.ID] = true
 			} else {
 				delete(selectedSwimlanes, s.ID)
-			}
-			loadBoard(boardID)
-		})
-		swimlaneCheck.Checked = selectedSwimlanes[s.ID]
-		
-		swimlaneDragHandle := &DraggableIcon{Button: widget.NewButton("👋", func() {}), SwimlaneID: s.ID}
-		swimlaneDragHandle.Resize(fyne.NewSize(30, 30))
-		
-		swimlaneHeaderContent := container.NewHBox(swimlaneCheck, swimlaneLabel, layout.NewSpacer(), swimlaneDragHandle)
-		
-		// Create bordered header with background color
+		}
+		loadBoard(boardID)
+	})
+	swimlaneCheck.Checked = selectedSwimlanes[s.ID]
+	
+	swimlaneDragHandle := NewDraggableIcon(nil, nil, s.ID)
+	
+	swimlaneHeaderContent := container.NewHBox(swimlaneCheck, swimlaneLabel, layout.NewSpacer(), swimlaneDragHandle)		// Create bordered header with background color
 		swimlaneHeaderBg := canvas.NewRectangle(color.NRGBA{240, 240, 240, 255})
 		if s.BackgroundColor != "" {
 			// Parse color - simple hex color parsing
@@ -1877,15 +1969,12 @@ func loadBoard(boardID int) {
 			draggableList := &DraggableList{
 				ListID:     l.ID,
 				SwimlaneID: s.ID,
-				Container:  container.NewVBox(),
-			}
-			// Drag handle for list
-			listHandle := &DraggableIcon{Button: widget.NewButton("👋", func() {}), List: draggableList}
-			listHandle.Resize(fyne.NewSize(30, 30))
-			
-			listHeaderContent := container.NewHBox(listCheck, listLabel, layout.NewSpacer(), listHandle)
-			
-			// Create bordered header with background color
+			Container:  container.NewVBox(),
+		}
+		// Drag handle for list
+		listHandle := NewDraggableIcon(nil, draggableList, 0)
+		
+		listHeaderContent := container.NewHBox(listCheck, listLabel, layout.NewSpacer(), listHandle)			// Create bordered header with background color
 			listHeaderBg := canvas.NewRectangle(color.NRGBA{250, 250, 250, 255})
 			if l.BackgroundColor != "" {
 				// Parse color - simple hex color parsing
@@ -1923,8 +2012,7 @@ func loadBoard(boardID int) {
 				cardCheck.Checked = selectedCards[c.ID]
 				
 				// drag handle for card
-				cardHandle := &DraggableIcon{Button: widget.NewButton("👋", func() {}), Card: draggableCard}
-				cardHandle.Resize(fyne.NewSize(25, 25))
+				cardHandle := NewDraggableIcon(draggableCard, nil, 0)
 				cardTitleContainer := container.NewHBox(
 					cardCheck,
 					widget.NewLabelWithStyle(c.Title, fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
