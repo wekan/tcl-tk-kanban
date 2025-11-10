@@ -21,6 +21,9 @@ db eval {
         board_id INTEGER NOT NULL,
         name TEXT NOT NULL,
         position INTEGER DEFAULT 0,
+        text_color TEXT DEFAULT '',
+        background_color TEXT DEFAULT '',
+        background_image TEXT DEFAULT '',
         FOREIGN KEY (board_id) REFERENCES boards(id) ON DELETE CASCADE
     );
     CREATE TABLE IF NOT EXISTS lists (
@@ -28,6 +31,9 @@ db eval {
         swimlane_id INTEGER NOT NULL,
         name TEXT NOT NULL,
         position INTEGER DEFAULT 0,
+        text_color TEXT DEFAULT '',
+        background_color TEXT DEFAULT '',
+        background_image TEXT DEFAULT '',
         FOREIGN KEY (swimlane_id) REFERENCES swimlanes(id) ON DELETE CASCADE
     );
     CREATE TABLE IF NOT EXISTS cards (

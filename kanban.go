@@ -859,6 +859,26 @@ func initDatabase() {
 	if err != nil {
 		panic(err)
 	}
+	
+	// Migrate existing databases: add color columns if they don't exist
+	// Check if swimlanes has text_color column
+	var colCount int
+	db.QueryRow("SELECT COUNT(*) FROM pragma_table_info('swimlanes') WHERE name='text_color'").Scan(&colCount)
+	if colCount == 0 {
+		// Add color columns to swimlanes
+		db.Exec("ALTER TABLE swimlanes ADD COLUMN text_color TEXT DEFAULT ''")
+		db.Exec("ALTER TABLE swimlanes ADD COLUMN background_color TEXT DEFAULT ''")
+		db.Exec("ALTER TABLE swimlanes ADD COLUMN background_image TEXT DEFAULT ''")
+	}
+	
+	// Check if lists has text_color column
+	db.QueryRow("SELECT COUNT(*) FROM pragma_table_info('lists') WHERE name='text_color'").Scan(&colCount)
+	if colCount == 0 {
+		// Add color columns to lists
+		db.Exec("ALTER TABLE lists ADD COLUMN text_color TEXT DEFAULT ''")
+		db.Exec("ALTER TABLE lists ADD COLUMN background_color TEXT DEFAULT ''")
+		db.Exec("ALTER TABLE lists ADD COLUMN background_image TEXT DEFAULT ''")
+	}
 }
 
 func getBoardByID(boardID int) *Board {
@@ -1577,7 +1597,10 @@ func refreshBoardContainer() {
 				} else {
 					delete(selectedBoards, b.ID)
 				}
-				loadBoard(currentBoardID)
+				// Just refresh toolbar to update selection count
+				if currentBoardID > 0 {
+					loadBoard(currentBoardID)
+				}
 			}
 		}(board))
 		boardCheck.Checked = selectedBoards[board.ID]
@@ -1585,7 +1608,8 @@ func refreshBoardContainer() {
 		boardBtn := widget.NewButton(fmt.Sprintf("%d: %s", board.ID, board.Name), func(b Board) func() {
 			return func() {
 				currentBoardID = b.ID
-				loadBoard(currentBoardID)
+				loadBoard(b.ID)
+				refreshBoardContainer()
 			}
 		}(board))
 		
