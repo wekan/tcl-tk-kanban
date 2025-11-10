@@ -10,6 +10,7 @@ import (
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/widget"
+	"fyne.io/fyne/v2/driver/desktop"
 	"github.com/xuri/excelize/v2"
 	_ "github.com/mattn/go-sqlite3"
 	"image/color"
@@ -409,10 +410,14 @@ type DraggableCard struct {
 
 func (d *DraggableCard) Dragged(ev *fyne.DragEvent) {
 	draggedCard = d
+	// Add visual feedback - make card semi-transparent
+	d.Card.Refresh()
 }
 
 func (d *DraggableCard) DragEnd() {
 	draggedCard = nil
+	// Reset visual feedback
+	d.Card.Refresh()
 }
 
 func (d *DraggableCard) Dropped(ev *fyne.DragEvent) {}
@@ -426,6 +431,8 @@ type DraggableList struct {
 
 func (d *DraggableList) Dragged(ev *fyne.DragEvent) {
 	draggedList = d
+	// Add visual feedback
+	d.Container.Refresh()
 }
 
 func (d *DraggableList) DragEnd() {
@@ -449,38 +456,43 @@ func (d *DraggableList) Dropped(ev *fyne.DragEvent) {
 
 // Draggable icon for triggering drag operations
 type DraggableIcon struct {
-	widget.BaseWidget
+	*fyne.Container
 	Card       *DraggableCard
 	List       *DraggableList
-	SwimlaneID int // For swimlane dragging (if implemented)
-	text       *canvas.Text
-	rect       *canvas.Rectangle
+	SwimlaneID int
+	isDragging bool
 }
 
 func NewDraggableIcon(card *DraggableCard, list *DraggableList, swimlaneID int) *DraggableIcon {
+	rect := canvas.NewRectangle(color.NRGBA{200, 200, 200, 255})
+	text := canvas.NewText("👋", color.Black)
+	text.TextSize = 16
+	text.Alignment = fyne.TextAlignCenter
+	
 	icon := &DraggableIcon{
+		Container:  container.NewMax(rect, text),
 		Card:       card,
 		List:       list,
 		SwimlaneID: swimlaneID,
+		isDragging: false,
 	}
-	icon.ExtendBaseWidget(icon)
+	icon.Resize(fyne.NewSize(30, 30))
 	return icon
 }
 
-func (d *DraggableIcon) CreateRenderer() fyne.WidgetRenderer {
-	d.rect = canvas.NewRectangle(color.NRGBA{200, 200, 200, 255})
-	d.text = canvas.NewText("👋", color.Black)
-	d.text.TextSize = 16
-	d.text.Alignment = fyne.TextAlignCenter
-	
-	return widget.NewSimpleRenderer(container.NewMax(d.rect, d.text))
-}
-
-func (d *DraggableIcon) MinSize() fyne.Size {
-	return fyne.NewSize(30, 30)
-}
+func (d *DraggableIcon) MouseIn(ev *desktop.MouseEvent) {}
+func (d *DraggableIcon) MouseMoved(ev *desktop.MouseEvent) {}
+func (d *DraggableIcon) MouseOut() {}
 
 func (d *DraggableIcon) Dragged(ev *fyne.DragEvent) {
+	// Change appearance to show we're dragging
+	if len(d.Objects) > 0 {
+		if rect, ok := d.Objects[0].(*canvas.Rectangle); ok {
+			rect.FillColor = color.NRGBA{100, 150, 255, 255}
+			rect.Refresh()
+		}
+	}
+	
 	if d.Card != nil {
 		draggedCard = d.Card
 		// Get card title for preview
@@ -501,33 +513,21 @@ func (d *DraggableIcon) Dragged(ev *fyne.DragEvent) {
 		db.QueryRow("SELECT name FROM swimlanes WHERE id = ?", d.SwimlaneID).Scan(&name)
 		draggedItemName = name
 	}
-	
-	// Create or update drag preview overlay
-	if dragOverlay == nil && mainWindow != nil {
-		dragPreview = canvas.NewRectangle(color.NRGBA{100, 100, 255, 200})
-		dragPreview.SetMinSize(fyne.NewSize(200, 60))
-		previewLabel := widget.NewLabelWithStyle(draggedItemName, fyne.TextAlignCenter, fyne.TextStyle{Bold: true})
-		dragOverlay = container.NewWithoutLayout(dragPreview, previewLabel)
-	}
-	
-	// Update preview position to follow cursor
-	if dragOverlay != nil {
-		dragPreview.Move(fyne.NewPos(ev.Position.X+10, ev.Position.Y+10))
-		dragPreview.Resize(fyne.NewSize(200, 60))
-	}
 }
 
 func (d *DraggableIcon) DragEnd() {
+	// Reset appearance
+	if len(d.Objects) > 0 {
+		if rect, ok := d.Objects[0].(*canvas.Rectangle); ok {
+			rect.FillColor = color.NRGBA{200, 200, 200, 255}
+			rect.Refresh()
+		}
+	}
+	
 	draggedCard = nil
 	draggedList = nil
 	draggingSwimlane = false
 	draggedItemName = ""
-	
-	// Clean up drag overlay
-	if dragOverlay != nil {
-		dragOverlay = nil
-		dragPreview = nil
-	}
 	
 	// Reset any highlighted drop slots
 	if currentDropSlot != nil {
@@ -1013,6 +1013,7 @@ func createBoard(name, desc string) {
 func getSwimlanes(boardID int) []Swimlane {
 	rows, err := db.Query("SELECT id, board_id, name, position, COALESCE(text_color, ''), COALESCE(background_color, ''), COALESCE(background_image, '') FROM swimlanes WHERE board_id = ? ORDER BY position", boardID)
 	if err != nil {
+		fmt.Printf("Error querying swimlanes for board %d: %v\n", boardID, err)
 		return nil
 	}
 	defer rows.Close()
@@ -1020,15 +1021,21 @@ func getSwimlanes(boardID int) []Swimlane {
 	var swimlanes []Swimlane
 	for rows.Next() {
 		var s Swimlane
-		rows.Scan(&s.ID, &s.BoardID, &s.Name, &s.Position, &s.TextColor, &s.BackgroundColor, &s.BackgroundImage)
+		err := rows.Scan(&s.ID, &s.BoardID, &s.Name, &s.Position, &s.TextColor, &s.BackgroundColor, &s.BackgroundImage)
+		if err != nil {
+			fmt.Printf("Error scanning swimlane: %v\n", err)
+			continue
+		}
 		swimlanes = append(swimlanes, s)
 	}
+	fmt.Printf("Found %d swimlanes for board %d\n", len(swimlanes), boardID)
 	return swimlanes
 }
 
 func getLists(swimlaneID int) []List {
 	rows, err := db.Query("SELECT id, swimlane_id, name, position, COALESCE(text_color, ''), COALESCE(background_color, ''), COALESCE(background_image, '') FROM lists WHERE swimlane_id = ? ORDER BY position", swimlaneID)
 	if err != nil {
+		fmt.Printf("Error querying lists for swimlane %d: %v\n", swimlaneID, err)
 		return nil
 	}
 	defer rows.Close()
@@ -1036,7 +1043,11 @@ func getLists(swimlaneID int) []List {
 	var lists []List
 	for rows.Next() {
 		var l List
-		rows.Scan(&l.ID, &l.SwimlaneID, &l.Name, &l.Position, &l.TextColor, &l.BackgroundColor, &l.BackgroundImage)
+		err := rows.Scan(&l.ID, &l.SwimlaneID, &l.Name, &l.Position, &l.TextColor, &l.BackgroundColor, &l.BackgroundImage)
+		if err != nil {
+			fmt.Printf("Error scanning list: %v\n", err)
+			continue
+		}
 		lists = append(lists, l)
 	}
 	return lists
@@ -1855,6 +1866,7 @@ func createMainWindow(a fyne.App) fyne.Window {
 }
 
 func loadBoard(boardID int) {
+	fmt.Printf("Loading board ID: %d\n", boardID)
 	// Update window title with current board
 	if boardID > 0 {
 		board := getBoardByID(boardID)
@@ -1922,14 +1934,16 @@ func loadBoard(boardID int) {
 				selectedSwimlanes[s.ID] = true
 			} else {
 				delete(selectedSwimlanes, s.ID)
-		}
-		loadBoard(boardID)
-	})
-	swimlaneCheck.Checked = selectedSwimlanes[s.ID]
-	
-	swimlaneDragHandle := NewDraggableIcon(nil, nil, s.ID)
-	
-	swimlaneHeaderContent := container.NewHBox(swimlaneCheck, swimlaneLabel, layout.NewSpacer(), swimlaneDragHandle)		// Create bordered header with background color
+			}
+			loadBoard(boardID)
+		})
+		swimlaneCheck.Checked = selectedSwimlanes[s.ID]
+		
+		swimlaneDragHandle := NewDraggableIcon(nil, nil, s.ID)
+		
+		swimlaneHeaderContent := container.NewHBox(swimlaneCheck, swimlaneLabel, layout.NewSpacer(), swimlaneDragHandle)
+		
+		// Create bordered header with background color
 		swimlaneHeaderBg := canvas.NewRectangle(color.NRGBA{240, 240, 240, 255})
 		if s.BackgroundColor != "" {
 			// Parse color - simple hex color parsing
@@ -1943,6 +1957,7 @@ func loadBoard(boardID int) {
 		swimlaneHeader := container.NewMax(swimlaneHeaderBg, container.NewPadded(swimlaneHeaderContent))
 
 		lists := getLists(s.ID)
+		fmt.Printf("Swimlane %d (%s) has %d lists\n", s.ID, s.Name, len(lists))
 		listRow := make([]fyne.CanvasObject, 0, len(lists)*2+1)
 		// leading list drop slot (index 0)
 		listRow = append(listRow, NewDropSlot("list", 0, s.ID, 0, 0))
@@ -1969,12 +1984,14 @@ func loadBoard(boardID int) {
 			draggableList := &DraggableList{
 				ListID:     l.ID,
 				SwimlaneID: s.ID,
-			Container:  container.NewVBox(),
-		}
-		// Drag handle for list
-		listHandle := NewDraggableIcon(nil, draggableList, 0)
-		
-		listHeaderContent := container.NewHBox(listCheck, listLabel, layout.NewSpacer(), listHandle)			// Create bordered header with background color
+				Container:  container.NewVBox(),
+			}
+			// Drag handle for list
+			listHandle := NewDraggableIcon(nil, draggableList, 0)
+			
+			listHeaderContent := container.NewHBox(listCheck, listLabel, layout.NewSpacer(), listHandle)
+			
+			// Create bordered header with background color
 			listHeaderBg := canvas.NewRectangle(color.NRGBA{250, 250, 250, 255})
 			if l.BackgroundColor != "" {
 				// Parse color - simple hex color parsing
@@ -2025,6 +2042,7 @@ func loadBoard(boardID int) {
 					widget.NewLabel(c.Description),
 				))
 				
+				// Add the Card widget to make it visible
 				cardObjs = append(cardObjs, draggableCard.Card)
 				cardObjs = append(cardObjs, NewDropSlot("card", 0, 0, l.ID, idx+1))
 			}
@@ -2036,14 +2054,13 @@ func loadBoard(boardID int) {
 					addCardButton,
 				))
 			} else {
-				draggableList.Container.Add(container.NewVBox(cardObjs...))
-			}
-
-			listRow = append(listRow, draggableList.Container)
-			listRow = append(listRow, NewDropSlot("list", 0, s.ID, 0, j+1))
+			draggableList.Container.Add(container.NewVBox(cardObjs...))
 		}
 
-		// If no lists exist in this swimlane, show "Add List" message/button
+		// Add the Container to make it visible
+		listRow = append(listRow, draggableList.Container)
+		listRow = append(listRow, NewDropSlot("list", 0, s.ID, 0, j+1))
+	}		// If no lists exist in this swimlane, show "Add List" message/button
 		if len(lists) == 0 {
 			addListButton := widget.NewButton("Add List", func() { showNewListDialog(s.ID) })
 			addListButton.Importance = widget.HighImportance
@@ -2066,6 +2083,7 @@ func loadBoard(boardID int) {
 		droppableSwimlane.Container.Add(container.NewHBox(listRow...))
 		droppableSwimlane.Container.Add(bottomSwimlaneSlot)
 		
+		// Add the Container itself since we need CanvasObject
 		swimlaneContainers[i] = droppableSwimlane.Container
 	}
 
@@ -2082,6 +2100,7 @@ func loadBoard(boardID int) {
 	}
 
 	// Update main area content (swimlanes only, toolbar is separate)
+	fmt.Printf("Setting main area with %d swimlane containers\n", len(swimlaneContainers))
 	mainArea.Content = container.NewVBox(swimlaneContainers...)
 	mainArea.Refresh()
 	
@@ -2089,6 +2108,7 @@ func loadBoard(boardID int) {
 	if mainWindow != nil {
 		mainWindow.Canvas().Refresh(mainArea)
 	}
+	fmt.Println("Board load complete")
 }
 
 func main() {
