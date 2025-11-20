@@ -1,6 +1,20 @@
 # Tcl/Tk and Go Kanban Board
 
-A full-featured Kanban board application with both Tcl/Tk and Go GUI implementations. Saves boards, swimlanes, lists, and cards to a SQLite database.
+A prototype Kanban board application GUI with both Tcl/Tk/SQLite and Go/Fyne/SQLite implementations. Saves boards, swimlanes, lists, and cards to a SQLite database.
+
+These are mostly related to making Excel XLSX export with attachment images.
+
+## TODO: Simplify Tcl/Tk GUI to be similar like Go/Fyne GUI
+
+- Go/Fyne GUI has been simplified combined to small amount of buttons.
+- Make Tcl/Tk GUI similar.
+
+## TODO: Test attaching images at Excel XLSX Export
+
+- Go Excelize: https://github.com/qax-os/excelize
+- Node.js ExcelJS: https://github.com/exceljs/exceljs
+- Tcl Excel: https://wiki.tcl-lang.org/page/Excel
+- FreePascal FPSpreadsheet: https://wiki.freepascal.org/FPSpreadsheet
 
 ## Features
 
