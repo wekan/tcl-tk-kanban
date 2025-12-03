@@ -4,10 +4,14 @@ A prototype Kanban board application GUI with both Tcl/Tk/SQLite and Go/Fyne/SQL
 
 These are mostly related to making Excel XLSX export with attachment images.
 
+![Screenshot of Go Fyne GUI](screenshot-go-fyne.png)
+
 ## TODO: Simplify Tcl/Tk GUI to be similar like Go/Fyne GUI
 
 - Go/Fyne GUI has been simplified combined to small amount of buttons.
 - Make Tcl/Tk GUI similar.
+
+![Screenshot of Tcl/Tk GUI](screenshot-tcl-tk.png)
 
 ## TODO: Test attaching images at Excel XLSX Export
 
