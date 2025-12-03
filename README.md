@@ -1,11 +1,16 @@
 ## 1) Go Fyne native GUI Kanban Board
 
-A prototype Kanban board application native GUI with [Go](https://go.dev/dl)/[Fyne](https://fyne.io)/[SQLite](https://sqlite.org).
-Saves boards, swimlanes, lists, and cards to a SQLite database.
+A prototype Kanban board application native GUI with
+[Go](https://go.dev/dl)/[Fyne](https://fyne.io)/[Excelize](https://github.com/qax-os/excelize)/[SQLite](https://sqlite.org).
+Saves boards, swimlanes, lists, and cards to a SQLite database. Exports board to Excel with [Excelize](https://github.com/qax-os/excelize).
 
 Go/Fyne GUI has been simplified combined to small amount of buttons.
 
 These are mostly related to making Excel XLSX export with attachment images.
+
+TODO:
+
+- Add export card to XLSX
 
 ![Screenshot of Go Fyne GUI](screenshot-go-fyne.png)
 
