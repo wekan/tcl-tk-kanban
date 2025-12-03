@@ -1,15 +1,23 @@
-# Tcl/Tk and Go Kanban Board
+## 1) Go Fyne native GUI Kanban Board
 
-A prototype Kanban board application GUI with both Tcl/Tk/SQLite and Go/Fyne/SQLite implementations. Saves boards, swimlanes, lists, and cards to a SQLite database.
+A prototype Kanban board application native GUI with [Go](https://go.dev/dl)/[Fyne](https://fyne.io)/[SQLite](https://sqlite.org).
+Saves boards, swimlanes, lists, and cards to a SQLite database.
+
+Go/Fyne GUI has been simplified combined to small amount of buttons.
 
 These are mostly related to making Excel XLSX export with attachment images.
 
 ![Screenshot of Go Fyne GUI](screenshot-go-fyne.png)
 
-## TODO: Simplify Tcl/Tk GUI to be similar like Go/Fyne GUI
+## 2) Tcl/Tk GUI Kanban board
 
-- Go/Fyne GUI has been simplified combined to small amount of buttons.
-- Make Tcl/Tk GUI similar.
+A prototype Kanban board application GUI with Tcl/Tk/SQLite.
+Clicking Export runs CLI executeable that uses Go based [Excelize](https://github.com/qax-os/excelize) to export boardID based board from SQLite to XLSX.
+
+TODO:
+
+- Add export card to XLSX
+- Simplify those too many Tcl/Tk buttons to be like Go/Fyne GUI small amount of buttons
 
 ![Screenshot of Tcl/Tk GUI](screenshot-tcl-tk.png)
 
