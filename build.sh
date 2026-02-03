@@ -35,13 +35,14 @@ show_menu() {
     echo "5) Build Go XLSX exporter as .so and embed in .kit"
     echo "6) Build executable (macOS app bundle)"
     echo "7) Run Kanban application (Tcl interpreter)"
-    echo "8) Run .kit file (if built)"
-    echo "9) Clean build artifacts"
-    echo "10) Build Go GUI executable"
-    echo "11) Run Go GUI executable"
-    echo "12) Exit"
+    echo "8) Run Kanban Drag-Drop application (Tcl interpreter)"
+    echo "9) Run .kit file (if built)"
+    echo "10) Clean build artifacts"
+    echo "11) Build Go GUI executable"
+    echo "12) Run Go GUI executable"
+    echo "13) Exit"
     echo ""
-    echo -n "Enter your choice [1-12]: "
+    echo -n "Enter your choice [1-13]: "
 }
 
 # Check if tclsh is available
@@ -129,6 +130,27 @@ run_app() {
     elif [[ "$OSTYPE" == "darwin"* ]]; then
       brew install tcl-tk
       /opt/homebrew/bin/wish kanban.tcl
+      exit;
+    #elif [[ "$OSTYPE" == "freebsd"* ]]; then
+    #elif [[ "$OSTYPE" == "win32" ]]; then
+    #elif [[ "$OSTYPE" == "cygwin" ]]; then
+    else
+      echo "Unknown"
+      echo ${OSTYPE}
+      exit;
+    fi
+}
+
+# Run the Tcl script directly
+run_drag() {
+    echo -e "${BLUE}Starting Kanban drag application...${NC}"
+    if [[ "$OSTYPE" == "linux-gnu" ]]; then
+      sudo apt-get -y install tcl tk
+      wish kanban-drag-drop.tcl
+      exit;
+    elif [[ "$OSTYPE" == "darwin"* ]]; then
+      brew install tcl-tk
+      /opt/homebrew/bin/wish kanban-drag-drop.tcl
       exit;
     #elif [[ "$OSTYPE" == "freebsd"* ]]; then
     #elif [[ "$OSTYPE" == "win32" ]]; then
@@ -448,18 +470,21 @@ while true; do
             run_app
             ;;
         8)
-            run_kit
+            run_drag
             ;;
         9)
-            clean_build
+            run_kit
             ;;
         10)
-            build_go_gui
+            clean_build
             ;;
         11)
-            run_go_gui
+            build_go_gui
             ;;
         12)
+            run_go_gui
+            ;;
+        13)
             echo -e "${GREEN}Exiting...${NC}"
             exit 0
             ;;
