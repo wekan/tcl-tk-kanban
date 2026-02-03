@@ -114,19 +114,30 @@ check_dependencies() {
 # Run the Tcl script directly
 run_app() {
     echo -e "${BLUE}Starting Kanban application...${NC}"
-    
-    if [ ! -f "kanban.tcl" ]; then
-        echo -e "${RED}Error: kanban.tcl not found!${NC}"
-        return 1
+    #if [ ! -f "kanban.tcl" ]; then
+    #    echo -e "${RED}Error: kanban.tcl not found!${NC}"
+    #    return 1
+    #fi
+    #if ! check_tclsh > /dev/null 2>&1; then
+    #    echo -e "${RED}Cannot run application - tclsh not available${NC}"
+    #    return 1
+    #fi
+    if [[ "$OSTYPE" == "linux-gnu" ]]; then
+      sudo apt-get -y install tcl tk
+      wish kanban.tcl
+      exit;
+    elif [[ "$OSTYPE" == "darwin"* ]]; then
+      brew install tcl-tk
+      /opt/homebrew/bin/wish kanban.tcl
+      exit;
+    #elif [[ "$OSTYPE" == "freebsd"* ]]; then
+    #elif [[ "$OSTYPE" == "win32" ]]; then
+    #elif [[ "$OSTYPE" == "cygwin" ]]; then
+    else
+      echo "Unknown"
+      echo ${OSTYPE}
+      exit;
     fi
-    
-    if ! check_tclsh > /dev/null 2>&1; then
-        echo -e "${RED}Cannot run application - tclsh not available${NC}"
-        return 1
-    fi
-    
-    chmod +x kanban.tcl
-    ./kanban.tcl
 }
 
 # Run the .kit file
