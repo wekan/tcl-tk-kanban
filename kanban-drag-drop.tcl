@@ -1,4 +1,4 @@
-wm title . "Universal Kanban"
+wm title . "Tcl/Tk kanban with drag drop"
 wm geometry . 600x400
 
 # Create background and columns
